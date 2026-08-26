@@ -1,14 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import axios from "axios";
-
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "/api/v1";
-const TOKEN_KEY = "pigyworld_access_token";
-const api = axios.create({ baseURL: API_BASE_URL });
-api.interceptors.request.use((config) => {
-  const token = localStorage.getItem(TOKEN_KEY);
-  if (token) config.headers.Authorization = `Bearer ${token}`;
-  return config;
-});
+import { api, clearSession, ROLE_KEY, saveProfile, saveSession, TOKEN_KEY } from "./api";
 const emptyCustomer = {
   farm_id: "",
   name: "",
@@ -22,6 +13,14 @@ const emptyCustomer = {
 };
 const statuses = ["all", "new", "contacted", "qualified", "won", "lost"];
 const interactionTypes = ["message", "call", "email", "visit", "meeting", "note"];
+const adminSections = [
+  { id: "home", label: "Home", icon: "⌂" },
+  { id: "customers", label: "Customers", icon: "◈" },
+  { id: "staff", label: "Staff", icon: "♙" },
+  { id: "finance", label: "Finance", icon: "⌁" },
+  { id: "communication", label: "Communication", icon: "✦" },
+  { id: "settings", label: "Settings", icon: "⚙" },
+];
 
 function App() {
   const [customers, setCustomers] = useState([]);
@@ -40,7 +39,7 @@ function App() {
     email: "",
     password: "",
     token: localStorage.getItem(TOKEN_KEY) || "",
-    role: localStorage.getItem("pigyworld_crm_role") || "",
+    role: localStorage.getItem(ROLE_KEY) || "",
   });
   const crmRole = auth.role || "customer_support";
   const isAdmin = crmRole === "admin";
@@ -51,12 +50,35 @@ function App() {
     message: "",
     recipient_id: "",
   });
+  const [activeSection, setActiveSection] = useState("home");
+  const [activeView, setActiveView] = useState("customers");
+  const [calculator, setCalculator] = useState({
+    customers: "",
+    amount: "",
+  });
+  const [report, setReport] = useState(null);
+  const [plans, setPlans] = useState([]);
+  const [planForm, setPlanForm] = useState({
+    code: "",
+    name: "",
+    description: "",
+    amount: "",
+    currency: "USD",
+    pig_limit: "",
+    active: true,
+  });
   const [memberForm, setMemberForm] = useState({
     name: "",
     email: "",
     password: "",
     crm_role: "finance",
   });
+  const selectSection = (section) => {
+    setActiveSection(section);
+    if (section === "customers") setActiveView("customers");
+    if (section === "finance") setActiveView("reports");
+    if (section === "communication") setActiveView("communications");
+  };
   const selected = useMemo(
     () => customers.find((customer) => customer.id === selectedId) || null,
     [customers, selectedId],
@@ -75,6 +97,11 @@ function App() {
         ),
     [customers],
   );
+  const projectedRevenue = useMemo(() => {
+    const customerCount = Number(calculator.customers) || 0;
+    const monthlyAmount = Number(calculator.amount) || 0;
+    return customerCount * monthlyAmount;
+  }, [calculator]);
   const showNotice = (message, tone = "info") => {
     setNotice({ message, tone });
     window.setTimeout(() => setNotice(null), 3500);
@@ -85,8 +112,7 @@ function App() {
     } catch {
       // The local session must still end when the server is unavailable.
     } finally {
-      localStorage.removeItem(TOKEN_KEY);
-      localStorage.removeItem("pigyworld_crm_role");
+      clearSession();
       setAuth((current) => ({ ...current, token: "", role: "" }));
       setFarmId("");
     }
@@ -106,6 +132,29 @@ function App() {
       activityEvents.forEach((event) => window.removeEventListener(event, resetIdleTimer));
     };
   }, [auth.token]);
+
+  useEffect(() => {
+    if (!auth.token) return undefined;
+    let active = true;
+    api.get("/auth/me")
+      .then((response) => {
+        if (!active) return;
+        const session = saveProfile(response);
+        const role = session.user.crm_role || (session.user.role === "farmOwner" ? "admin" : "customer_support");
+        const nextFarmId = session.farms[0]?.id ? String(session.farms[0].id) : "";
+        setFarmId(nextFarmId);
+        setForm((current) => ({ ...current, farm_id: nextFarmId }));
+        setAuth((current) => ({ ...current, role }));
+      })
+      .catch(() => logout());
+    return () => { active = false; };
+  }, [auth.token]);
+
+  useEffect(() => {
+    const expire = () => setAuth((current) => ({ ...current, token: "", role: "" }));
+    window.addEventListener("pigyworld-auth-expired", expire);
+    return () => window.removeEventListener("pigyworld-auth-expired", expire);
+  }, []);
 
   const loadCustomers = async () => {
     try {
@@ -133,8 +182,25 @@ function App() {
     }
   };
   useEffect(() => {
-    if (auth.token) loadCustomers();
-  }, [auth.token, filters.status]);
+    if (!auth.token) return undefined;
+    const timer = window.setTimeout(() => loadCustomers(), 300);
+    return () => window.clearTimeout(timer);
+  }, [auth.token, filters.search, filters.status]);
+  useEffect(() => {
+    if (!auth.token || !isAdmin && crmRole !== "finance") return undefined;
+    api
+      .get("/crm/reports/overview", { params: farmId ? { farm_id: farmId } : {} })
+      .then((response) => setReport(response.data?.data || null))
+      .catch(() => showNotice("Unable to load finance overview.", "error"));
+    return undefined;
+  }, [auth.token, farmId, isAdmin, crmRole]);
+  useEffect(() => {
+    if (!auth.token || !isAdmin && crmRole !== "finance") return undefined;
+    api.get("/subscription-plans")
+      .then((response) => setPlans(response.data?.data || []))
+      .catch(() => showNotice("Unable to load subscription plans.", "error"));
+    return undefined;
+  }, [auth.token, isAdmin, crmRole]);
   useEffect(() => {
     if (!selected) {
       setInteractions([]);
@@ -150,18 +216,17 @@ function App() {
     event.preventDefault();
     try {
       const response = await api.post("/auth/login", {
-        email: auth.email,
+        identifier: auth.email,
         password: auth.password,
       });
+      const session = saveSession(response);
       const token = response.data.access_token;
-      const farms = response.data.farms?.data || response.data.farms || [];
+      const farms = session.farms;
       const selectedFarmId = farms[0]?.id ? String(farms[0].id) : "";
-      const user = response.data.user || {};
+      const user = session.user;
       const role =
         user.crm_role ||
         (user.role === "farmOwner" ? "admin" : "customer_support");
-      localStorage.setItem(TOKEN_KEY, token);
-      localStorage.setItem("pigyworld_crm_role", role);
       setFarmId(selectedFarmId);
       setForm((current) => ({ ...current, farm_id: selectedFarmId }));
       setAuth((current) => ({ ...current, token, role }));
@@ -344,6 +409,30 @@ function App() {
       );
     }
   };
+  const savePlan = async (event) => {
+    event.preventDefault();
+    try {
+      const response = await api.post("/subscription-plans", {
+        ...planForm,
+        amount: Number(planForm.amount),
+        pig_limit: planForm.pig_limit ? Number(planForm.pig_limit) : null,
+      });
+      setPlans((current) => [...current, response.data.data]);
+      setPlanForm({ code: "", name: "", description: "", amount: "", currency: "USD", pig_limit: "", active: true });
+      showNotice("Subscription plan created.", "success");
+    } catch (error) {
+      showNotice(error.response?.data?.message || "Could not create subscription plan.", "error");
+    }
+  };
+  const togglePlan = async (plan) => {
+    try {
+      const response = await api.patch(`/subscription-plans/${plan.id}`, { active: !plan.active });
+      setPlans((current) => current.map((item) => item.id === plan.id ? response.data.data : item));
+      showNotice(plan.active ? "Plan retired." : "Plan activated.", "success");
+    } catch (error) {
+      showNotice(error.response?.data?.message || "Could not update subscription plan.", "error");
+    }
+  };
   useEffect(() => {
     if (auth.token && canNotify) loadStaff();
   }, [auth.token, farmId, canNotify]);
@@ -353,39 +442,35 @@ function App() {
       <Login auth={auth} setAuth={setAuth} onSubmit={login} notice={notice} />
     );
   return (
-    <div className="app-shell">
-      <aside className="sidebar">
+    <div className={`app-shell ${activeSection === "home" ? "home-shell" : ""}`}>
+      <aside className={`sidebar ${activeSection === "home" ? "sidebar-hidden" : ""}`}>
         <div className="brand-block">
           <div className="brand-mark">P</div>
           <div>
-            <strong>Pigyworld</strong>
+            <strong>Pig World</strong>
             <span>Customer desk</span>
           </div>
         </div>
-        <nav className="side-nav">
-          <button className="nav-item active">
-            <span>◈</span> Customers
-          </button>
-          <button
-            className="nav-item"
-            onClick={() => showNotice("Reports are coming soon.")}
-          >
-            <span>⌁</span> Reports
-          </button>
-        </nav>
-        <div className="side-caption">Pipeline</div>
-        <div className="pipeline-list">
-          {statuses.slice(1).map((status) => (
-            <button
-              key={status}
-              onClick={() => setFilters((current) => ({ ...current, status }))}
-            >
-              <span className={`status-dot ${status}`} />
-              {status[0].toUpperCase() + status.slice(1)}
-              <b>{counts[status] || 0}</b>
-            </button>
-          ))}
-        </div>
+        {activeSection === "customers" && <>
+          <nav className="side-nav">
+            <button className={`nav-item ${activeView === "customers" ? "active" : ""}`} onClick={() => setActiveView("customers")}><span>◈</span> Customer list</button>
+            <button className="nav-item" onClick={() => showNotice("Customer segments are ready for the next CRM release.")}> <span>◇</span> Segments</button>
+            <button className="nav-item" onClick={() => showNotice("Customer import is coming soon.")}><span>⇧</span> Import</button>
+          </nav>
+          <div className="side-caption">Pipeline</div>
+          <div className="pipeline-list">
+            {statuses.slice(1).map((status) => (
+              <button key={status} onClick={() => setFilters((current) => ({ ...current, status }))}>
+                <span className={`status-dot ${status}`} />{status[0].toUpperCase() + status.slice(1)}<b>{counts[status] || 0}</b>
+              </button>
+            ))}
+          </div>
+        </>}
+        {activeSection === "staff" && <nav className="side-nav">
+          <button className="nav-item active"><span>♙</span> Staff list</button>
+          <button className="nav-item" onClick={() => showNotice("Policies are managed at farm level.")}> <span>▤</span> Policies</button>
+          <button className="nav-item" onClick={() => showNotice("Staff activity logs will appear here.")}><span>◷</span> Staff logs</button>
+        </nav>}
         <div className="sidebar-footer">
           <span className="avatar">PW</span>
           <div>
@@ -402,16 +487,38 @@ function App() {
         </div>
       </aside>
       <main className="main-panel">
+        <nav className="admin-navbar" aria-label="Admin navigation">
+          <div className="admin-nav-label">Admin</div>
+          <div className="admin-nav-links">
+            {adminSections.map((section) => (
+              <button key={section.id} className={activeSection === section.id ? "active" : ""} onClick={() => selectSection(section.id)}>
+                <span>{section.icon}</span>{section.label}
+              </button>
+            ))}
+          </div>
+        </nav>
         <header className="topbar">
           <div>
             <div className="eyebrow">{isAdmin ? "Admin workspace" : `${crmRole.replace("_", " ")} workspace`}</div>
-            <h1>Customers</h1>
+            <h1>
+              {activeSection === "home"
+                ? "Home"
+                : activeSection === "staff"
+                  ? "Staff"
+                  : activeSection === "settings"
+                    ? "Settings"
+                    : activeView === "reports"
+                ? "Finance overview"
+                : activeView === "communications"
+                  ? "Communications"
+                  : "Customers"}
+            </h1>
           </div>
           <div className="top-actions">
-            <button className="ghost-button" onClick={loadCustomers}>
+            {activeSection === "customers" && <button className="ghost-button" onClick={loadCustomers}>
               ↻ Refresh
-            </button>
-            {canWriteCustomers && <button
+            </button>}
+            {activeSection === "customers" && canWriteCustomers && <button
               className="primary-button"
               onClick={() => {
                 setEditing(false);
@@ -426,7 +533,8 @@ function App() {
         {notice && (
           <div className={`notice ${notice.tone}`}>{notice.message}</div>
         )}
-        {canNotify && <section className="panel-card crm-tools">
+        {activeSection === "home" && <HomeDashboard customers={customers} counts={counts} onOpen={selectSection} />}
+        {canNotify && activeSection === "communication" && <section className="panel-card crm-tools">
           <div className="panel-heading"><div><div className="eyebrow">Broadcast</div><h2>Send notification</h2></div><span>All staff or one person</span></div>
           <form className="interaction-composer" onSubmit={sendNotification}>
             <select value={notification.recipient_id} onChange={(event) => setNotification((current) => ({ ...current, recipient_id: event.target.value }))}><option value="">Everyone in this farm</option>{staff.map((member) => <option key={member.id} value={member.id}>{member.name} ({member.crm_role || member.role})</option>)}</select>
@@ -434,12 +542,34 @@ function App() {
             <button className="primary-button" type="submit">Send</button>
           </form>
         </section>}
-        {isAdmin && <section className="panel-card crm-tools">
+        {isAdmin && activeSection === "staff" && <section className="panel-card crm-tools">
           <div className="panel-heading"><div><div className="eyebrow">Administration</div><h2>CRM access</h2></div><span>Add, close, reassign, or delete accounts</span></div>
           <form className="staff-row" onSubmit={addStaff}><input required value={memberForm.name} onChange={(event) => setMemberForm((current) => ({ ...current, name: event.target.value }))} placeholder="Name" /><input required type="email" value={memberForm.email} onChange={(event) => setMemberForm((current) => ({ ...current, email: event.target.value }))} placeholder="Email" /><input required type="password" minLength="8" value={memberForm.password} onChange={(event) => setMemberForm((current) => ({ ...current, password: event.target.value }))} placeholder="Temporary password" /><select value={memberForm.crm_role} onChange={(event) => setMemberForm((current) => ({ ...current, crm_role: event.target.value }))}><option value="finance">Finance</option><option value="customer_support">Customer support</option></select><button className="primary-button" type="submit">Add account</button></form>
-          {staff.filter((member) => member.crm_role !== "admin").map((member) => <div className="staff-row" key={member.id}><strong>{member.name}</strong><span>{member.email}</span><select value={member.crm_role || ""} onChange={(event) => updateStaff(member, { crm_role: event.target.value })}><option value="finance">Finance</option><option value="customer_support">Customer support</option></select><button className="filter-button" onClick={() => updateStaff(member, { closed: !member.crm_closed_at })}>{member.crm_closed_at ? "Reopen" : "Close"}</button><button className="danger-button" onClick={() => deleteStaff(member)}>Delete</button></div>)}
+          {staff.filter((member) => member.crm_role !== "admin").map((member) => <div className="staff-row" key={member.id}><strong>{member.name}</strong><span>{member.email}</span><select value={member.crm_role || ""} onChange={(event) => updateStaff(member, { crm_role: event.target.value })}><option value="finance">Finance</option><option value="customer_support">Customer support</option></select><button className="filter-button" onClick={() => updateStaff(member, { closed: !member.crm_closed_at })}>{member.crm_closed_at ? "Unsuspend" : "Suspend"}</button><button className="danger-button" onClick={() => deleteStaff(member)}>Delete</button></div>)}
         </section>}
-        <section className="stats-row">
+        {activeSection === "settings" && <section className="panel-card section-placeholder">
+          <div className="eyebrow">Workspace preferences</div>
+          <h2>Settings</h2>
+          <p>Manage workspace preferences, notifications, and account defaults from this area.</p>
+          <button className="ghost-button" onClick={() => showNotice("Settings controls are being connected to the workspace API.")}>Workspace settings</button>
+        </section>}
+        {activeSection === "finance" && (
+          <FinanceDashboard
+            customers={customers}
+            counts={counts}
+            report={report}
+            calculator={calculator}
+            setCalculator={setCalculator}
+            projectedRevenue={projectedRevenue}
+            plans={plans}
+            planForm={planForm}
+            setPlanForm={setPlanForm}
+            savePlan={savePlan}
+            togglePlan={togglePlan}
+            canManagePlans={isAdmin || crmRole === "finance"}
+          />
+        )}
+        {activeSection === "customers" && <section className="stats-row">
           <div>
             <span>Total relationships</span>
             <strong>{customers.length}</strong>
@@ -460,8 +590,8 @@ function App() {
                 : "0%"}
             </strong>
           </div>
-        </section>
-        <section className="workspace-grid">
+        </section>}
+        {activeSection === "customers" && <section className="workspace-grid">
           <div className="list-panel panel-card">
             <div className="panel-heading">
               <div>
@@ -485,7 +615,6 @@ function App() {
                     search: event.target.value,
                   }))
                 }
-                onKeyDown={(event) => event.key === "Enter" && loadCustomers()}
                 placeholder="Search name, company, or email"
               />
             </div>
@@ -668,9 +797,129 @@ function App() {
               </div>
             )}
           </div>
-        </section>
+        </section>}
       </main>
     </div>
+  );
+}
+
+function HomeDashboard({ customers, counts, onOpen }) {
+  return (
+    <section className="home-dashboard">
+      <div className="home-intro">
+        <div>
+          <div className="eyebrow">Workspace at a glance</div>
+          <h2>Good to see you.</h2>
+          <p>Choose an area from the Admin navigation to keep farm operations moving.</p>
+        </div>
+        <button className="primary-button" onClick={() => onOpen("customers")}>Open customer list</button>
+      </div>
+      <div className="home-metrics">
+        <button onClick={() => onOpen("customers")}><span>Customers</span><strong>{customers.length}</strong><small>View relationships</small></button>
+        <button onClick={() => onOpen("staff")}><span>Staff workspace</span><strong>→</strong><small>Manage accounts and access</small></button>
+        <button onClick={() => onOpen("finance")}><span>Finance</span><strong>{counts.won || 0}</strong><small>Won relationships this cycle</small></button>
+      </div>
+    </section>
+  );
+}
+
+function FinanceDashboard({
+  customers,
+  counts,
+  report,
+  calculator,
+  setCalculator,
+  projectedRevenue,
+  plans,
+  planForm,
+  setPlanForm,
+  savePlan,
+  togglePlan,
+  canManagePlans,
+}) {
+  const activeRelationships = report?.active_relationships ?? customers.filter(
+    (customer) => !["lost"].includes(customer.status),
+  ).length;
+  const winRate = report?.conversion_rate ?? (customers.length
+    ? Math.round(((counts.won || 0) / customers.length) * 100)
+    : 0);
+  const statusTotal = report?.total_customers ?? customers.length;
+  const statusCounts = report?.by_status || counts;
+
+  return (
+    <section className="finance-dashboard">
+      <div className="finance-kpis">
+        <div className="finance-kpi">
+          <span>Active relationships</span>
+          <strong>{activeRelationships}</strong>
+          <small>Current CRM records excluding lost</small>
+        </div>
+        <div className="finance-kpi">
+          <span>Qualified pipeline</span>
+          <strong>{report?.qualified ?? counts.qualified ?? 0}</strong>
+          <small>Ready for subscription follow-up</small>
+        </div>
+        <div className="finance-kpi finance-kpi-accent">
+          <span>Conversion rate</span>
+          <strong>{winRate}%</strong>
+          <small>Won relationships this cycle</small>
+        </div>
+      </div>
+      <div className="finance-columns">
+        <section className="panel-card finance-breakdown">
+          <div className="panel-heading">
+            <div>
+              <div className="eyebrow">Customer health</div>
+              <h2>Pipeline by status</h2>
+            </div>
+            <span>{statusTotal} records</span>
+          </div>
+          {statuses.slice(1).map((status) => (
+            <div className="breakdown-row" key={status}>
+              <span className={`status-dot ${status}`} />
+              <span>{status[0].toUpperCase() + status.slice(1)}</span>
+              <div className="breakdown-bar"><i style={{ width: `${statusTotal ? ((statusCounts[status] || 0) / statusTotal) * 100 : 0}%` }} /></div>
+              <strong>{statusCounts[status] || 0}</strong>
+            </div>
+          ))}
+        </section>
+        <section className="panel-card calculator-card">
+          <div className="eyebrow">Planning tool</div>
+          <h2>Revenue calculator</h2>
+          <p>Estimate monthly revenue from the active subscription catalog.</p>
+          <label>Paying customers<input type="number" min="0" value={calculator.customers} onChange={(event) => setCalculator((current) => ({ ...current, customers: event.target.value }))} placeholder="0" /></label>
+          <label>Monthly amount<input type="number" min="0" step="0.01" value={calculator.amount} onChange={(event) => setCalculator((current) => ({ ...current, amount: event.target.value }))} placeholder="0.00" /></label>
+          <div className="calculator-total"><span>Projected monthly revenue</span><strong>{projectedRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></div>
+        </section>
+      </div>
+      <section className="panel-card finance-next-step">
+        <div><div className="eyebrow">Payment setup</div><h2>Plans are ready for checkout</h2><p>Choose a payment provider before enabling gateway transactions for these prices.</p></div>
+        <button className="ghost-button" onClick={() => window.alert("Add the payment provider and server-side credentials to enable checkout.")}>View integration status</button>
+      </section>
+      {canManagePlans && <section className="panel-card subscription-plans-panel">
+        <div className="panel-heading">
+          <div><div className="eyebrow">Billing catalog</div><h2>Subscription plans</h2></div>
+          <span>{plans.length} plans</span>
+        </div>
+        <form className="staff-row" onSubmit={savePlan}>
+          <input required value={planForm.code} onChange={(event) => setPlanForm((current) => ({ ...current, code: event.target.value }))} placeholder="Code" />
+          <input required value={planForm.name} onChange={(event) => setPlanForm((current) => ({ ...current, name: event.target.value }))} placeholder="Plan name" />
+          <input required type="number" min="0" step="0.01" value={planForm.amount} onChange={(event) => setPlanForm((current) => ({ ...current, amount: event.target.value }))} placeholder="Amount" />
+          <input required maxLength="3" value={planForm.currency} onChange={(event) => setPlanForm((current) => ({ ...current, currency: event.target.value.toUpperCase() }))} placeholder="Currency" />
+          <input type="number" min="1" value={planForm.pig_limit} onChange={(event) => setPlanForm((current) => ({ ...current, pig_limit: event.target.value }))} placeholder="Pig limit" />
+          <button className="primary-button" type="submit">Add plan</button>
+        </form>
+        <div className="plan-list">
+          {plans.map((plan) => <div className="staff-row" key={plan.id}>
+            <strong>{plan.name}</strong>
+            <span>{plan.amount} {plan.currency}</span>
+            <span>{plan.pig_limit ? `Up to ${plan.pig_limit} pigs` : "Unlimited pigs"}</span>
+            <span>{plan.active ? "Active" : "Retired"}</span>
+            <button className="filter-button" type="button" onClick={() => togglePlan(plan)}>{plan.active ? "Retire" : "Activate"}</button>
+          </div>)}
+        </div>
+      </section>}
+    </section>
   );
 }
 
@@ -678,7 +927,7 @@ function Login({ auth, setAuth, onSubmit, notice }) {
   return (
     <div className="login-screen">
       <div className="login-art">
-        <div className="art-label">PIGYWORLD / CRM</div>
+        <div className="art-label">PIG WORLD / CRM</div>
         <div className="art-copy">
           <h1>
             Better conversations.
@@ -695,14 +944,14 @@ function Login({ auth, setAuth, onSubmit, notice }) {
         <div className="brand-block">
           <div className="brand-mark">P</div>
           <div>
-            <strong>Pigyworld</strong>
+            <strong>Pig World</strong>
             <span>Customer desk</span>
           </div>
         </div>
         <div>
           <div className="eyebrow">Welcome back</div>
           <h2>Sign in to your workspace</h2>
-          <p className="muted-copy">Use your Pigyworld account to continue.</p>
+          <p className="muted-copy">Use your Pig World account to continue.</p>
         </div>
         {notice && (
           <div className={`notice ${notice.tone}`}>{notice.message}</div>
@@ -738,7 +987,7 @@ function Login({ auth, setAuth, onSubmit, notice }) {
           Continue <span>→</span>
         </button>
         <small className="login-help">
-          Protected by your Pigyworld account
+          Protected by your Pig World account
         </small>
       </form>
     </div>

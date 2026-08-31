@@ -63,7 +63,7 @@ function App() {
     name: "",
     description: "",
     amount: "",
-    currency: "USD",
+    currency: "KES",
     pig_limit: "",
     active: true,
   });
@@ -895,6 +895,22 @@ function FinanceDashboard({
       <section className="panel-card finance-next-step">
         <div><div className="eyebrow">Payment setup</div><h2>Plans are ready for checkout</h2><p>Choose a payment provider before enabling gateway transactions for these prices.</p></div>
         <button className="ghost-button" onClick={() => window.alert("Add the payment provider and server-side credentials to enable checkout.")}>View integration status</button>
+      </section>
+      <section className="panel-card subscription-farms-panel">
+        <div className="panel-heading">
+          <div><div className="eyebrow">Farm subscriptions</div><h2>Herd-based billing</h2></div>
+          <span>{report?.subscriptions?.length || 0} farms</span>
+        </div>
+        {(report?.subscriptions || []).length === 0 ? <p>No farm subscription payments recorded yet.</p> : <div className="plan-list">
+          {report.subscriptions.map((farm) => <div className="staff-row" key={farm.id}>
+            <strong>{farm.name}</strong>
+            <span>{farm.mother_pig_count ?? 0} mother pigs</span>
+            <span>{farm.subscription_plan || "No plan"}</span>
+            <span>{farm.payment_amount ? `${farm.payment_amount} ${farm.payment_currency}` : "No payment"}</span>
+            <span>{farm.payment_status || "pending"}</span>
+            <span>{farm.mpesa_receipt || "Awaiting M-Pesa"}</span>
+          </div>)}
+        </div>}
       </section>
       {canManagePlans && <section className="panel-card subscription-plans-panel">
         <div className="panel-heading">

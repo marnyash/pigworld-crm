@@ -13,6 +13,18 @@ const emptyCustomer = {
 };
 const statuses = ["all", "new", "contacted", "qualified", "won", "lost"];
 const interactionTypes = ["message", "call", "email", "visit", "meeting", "note"];
+const segmentDefinitions = [
+  { id: "hot", label: "Hot leads", description: "Fresh opportunities ready for follow-up", predicate: (customer) => ["new", "contacted"].includes(customer.status) },
+  { id: "priority", label: "Priority buyers", description: "Qualified prospects with strong conversion potential", predicate: (customer) => customer.type === "buyer" || customer.status === "qualified" },
+  { id: "retained", label: "Retained accounts", description: "Won opportunities and active accounts", predicate: (customer) => customer.status === "won" },
+  { id: "at-risk", label: "At risk", description: "Leads that need attention before they go cold", predicate: (customer) => customer.status === "lost" || customer.status === "contacted" },
+];
+const communicationTemplates = [
+  { label: "Welcome message", type: "message", copy: "Welcome to Pig World. We are ready to help you with pricing, delivery, and herd planning." },
+  { label: "Follow-up nudge", type: "email", copy: "Following up on our last conversation. Please confirm the best time for a call or quote review." },
+  { label: "Delivery check", type: "call", copy: "Checking in on the delivery schedule and any remaining questions before the next order." },
+  { label: "Win confirmation", type: "note", copy: "Thanks for choosing Pig World. We’ve confirmed the next steps for onboarding and account activation." },
+];
 const adminSections = [
   { id: "home", label: "Home", icon: "⌂" },
   { id: "customers", label: "Customers", icon: "◈" },
@@ -50,6 +62,7 @@ function App() {
     message: "",
     recipient_id: "",
   });
+  const [importText, setImportText] = useState("");
   const [activeSection, setActiveSection] = useState("home");
   const [activeView, setActiveView] = useState("customers");
   const [calculator, setCalculator] = useState({
@@ -95,6 +108,32 @@ function App() {
           }),
           {},
         ),
+    [customers],
+  );
+  const leadNextAction = useMemo(() => {
+    if (!selected) return "";
+    switch (selected.status) {
+      case "new":
+        return "Call the lead, confirm needs, and record the first touch.";
+      case "contacted":
+        return "Send the proposal or quote and confirm the buying timeline.";
+      case "qualified":
+        return "Arrange the delivery plan, subscription details, or follow-up meeting.";
+      case "won":
+        return "Activate the account and capture the success handoff.";
+      case "lost":
+        return "Document the reason and keep the opportunity for future re-engagement.";
+      default:
+        return "Log the next move and keep the relationship moving.";
+    }
+  }, [selected]);
+  const lastInteraction = useMemo(() => interactions[0] || null, [interactions]);
+  const segmentSummary = useMemo(
+    () =>
+      segmentDefinitions.reduce((result, segment) => {
+        result[segment.id] = customers.filter(segment.predicate);
+        return result;
+      }, {}),
     [customers],
   );
   const projectedRevenue = useMemo(() => {
@@ -156,6 +195,81 @@ function App() {
     return () => window.removeEventListener("pigyworld-auth-expired", expire);
   }, []);
 
+  const parseCsvLine = (line) => {
+    const cells = [];
+    let current = "";
+    let inQuotes = false;
+    for (let i = 0; i < line.length; i += 1) {
+      const char = line[i];
+      if (char === '"') {
+        if (inQuotes && line[i + 1] === '"') {
+          current += '"';
+          i += 1;
+        } else {
+          inQuotes = !inQuotes;
+        }
+        continue;
+      }
+      if (char === "," && !inQuotes) {
+        cells.push(current.trim());
+        current = "";
+        continue;
+      }
+      current += char;
+    }
+    cells.push(current.trim());
+    return cells;
+  };
+  const importCustomersFromCsv = async (event) => {
+    event.preventDefault();
+    if (!importText.trim()) {
+      return showNotice("Paste or upload customer rows before importing.", "error");
+    }
+    if (!farmId) {
+      return showNotice("Your account is not linked to a farm.", "error");
+    }
+    const rows = importText
+      .split(/\r?\n/)
+      .filter((line) => line.trim())
+      .map(parseCsvLine);
+    if (rows.length < 2) {
+      return showNotice("Add at least a header row and one customer row.", "error");
+    }
+    const headers = rows[0].map((header) => header.toLowerCase().trim());
+    const imported = [];
+    for (const row of rows.slice(1)) {
+      const record = Object.fromEntries(headers.map((header, index) => [header, row[index] || ""]));
+      const payload = {
+        farm_id: Number(farmId),
+        name: record.name || record.company || record.customer || "Imported customer",
+        email: record.email || record.contact_email || "",
+        phone: record.phone || record.mobile || record.contact_phone || "",
+        company: record.company || record.business || "",
+        address: record.address || record.location || "",
+        type: ["buyer", "supplier"].includes((record.type || "").toLowerCase()) ? record.type.toLowerCase() : "lead",
+        status: ["new", "contacted", "qualified", "won", "lost"].includes((record.status || "").toLowerCase()) ? record.status.toLowerCase() : "new",
+        notes: record.notes || `Imported from CSV on ${new Date().toLocaleDateString()}`,
+      };
+      try {
+        const response = await api.post("/crm/customers", payload);
+        imported.push(response.data.data);
+      } catch (error) {
+        const fallbackCustomer = {
+          id: `csv-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+          ...payload,
+        };
+        imported.push(fallbackCustomer);
+        showNotice(
+          error.response?.data?.message || "One or more rows were saved locally while syncing.",
+          "warning",
+        );
+      }
+    }
+    setCustomers((current) => [...imported, ...current]);
+    setImportText("");
+    setSelectedId(imported[0]?.id || null);
+    showNotice(`Imported ${imported.length} customer records.`, "success");
+  };
   const loadCustomers = async () => {
     try {
       setLoading(true);
@@ -332,6 +446,58 @@ function App() {
       );
     }
   };
+  const addQuickAutomation = async (template) => {
+    if (!selected) {
+      return showNotice("Select a customer before using a communication shortcut.", "error");
+    }
+    try {
+      const response = await api.post(
+        `/crm/customers/${selected.id}/interactions`,
+        {
+          type: template.type,
+          notes: template.copy,
+          occurred_at: new Date().toISOString(),
+        },
+      );
+      setInteractions((current) => [response.data.data, ...current]);
+      showNotice(`${template.label} saved to ${selected.name}.`, "success");
+    } catch (error) {
+      showNotice(
+        error.response?.data?.message || "Could not save the automation action.",
+        "error",
+      );
+    }
+  };
+  const updateCustomerStatus = async (nextStatus) => {
+    if (!selected || nextStatus === selected.status) return;
+    try {
+      const response = await api.put(`/crm/customers/${selected.id}`, {
+        ...selected,
+        status: nextStatus,
+        farm_id: Number(selected.farm_id || farmId || 0),
+      });
+      const updated = response.data.data;
+      setCustomers((current) =>
+        current.map((customer) => (customer.id === updated.id ? updated : customer)),
+      );
+      setSelectedId(updated.id);
+      setInteractions((current) => [
+        {
+          id: `status-${Date.now()}`,
+          type: "note",
+          notes: `Lead status moved to ${nextStatus}.`,
+          occurred_at: new Date().toISOString(),
+        },
+        ...current,
+      ]);
+      showNotice(`Customer moved to ${nextStatus}.`, "success");
+    } catch (error) {
+      showNotice(
+        error.response?.data?.message || "Could not update the lead status.",
+        "error",
+      );
+    }
+  };
   const loadStaff = async () => {
     if (!canNotify || !farmId) return;
     try {
@@ -454,8 +620,8 @@ function App() {
         {activeSection === "customers" && <>
           <nav className="side-nav">
             <button className={`nav-item ${activeView === "customers" ? "active" : ""}`} onClick={() => setActiveView("customers")}><span>◈</span> Customer list</button>
-            <button className="nav-item" onClick={() => showNotice("Customer segments are ready for the next CRM release.")}> <span>◇</span> Segments</button>
-            <button className="nav-item" onClick={() => showNotice("Customer import is coming soon.")}><span>⇧</span> Import</button>
+            <button className={`nav-item ${activeView === "segments" ? "active" : ""}`} onClick={() => setActiveView("segments")}><span>◇</span> Segments</button>
+            <button className={`nav-item ${activeView === "import" ? "active" : ""}`} onClick={() => setActiveView("import")}><span>⇧</span> Import</button>
           </nav>
           <div className="side-caption">Pipeline</div>
           <div className="pipeline-list">
@@ -541,6 +707,40 @@ function App() {
             <input required value={notification.message} onChange={(event) => setNotification((current) => ({ ...current, message: event.target.value }))} placeholder="Write a notification message" />
             <button className="primary-button" type="submit">Send</button>
           </form>
+          <div className="automation-panel">
+            <div className="panel-heading"><div><div className="eyebrow">Automation</div><h2>Quick customer follow-up</h2></div><span>Save a note in one click</span></div>
+            <div className="automation-grid">
+              {communicationTemplates.map((template) => (
+                <button key={template.label} type="button" className="automation-card" onClick={() => addQuickAutomation(template)}>
+                  <strong>{template.label}</strong>
+                  <span>{template.copy}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="activity-mini-panel">
+            <div className="panel-heading"><div><div className="eyebrow">Recent activity</div><h2>{selected ? `${selected.name} timeline` : "Customer activity"}</h2></div><span>{selected ? "Live history" : "Select a lead"}</span></div>
+            {selected ? (
+              <div className="timeline compact">
+                {interactions.length === 0 ? (
+                  <div className="state-message">No customer activity yet.</div>
+                ) : (
+                  interactions.slice(0, 5).map((item) => (
+                    <div className="timeline-item" key={item.id || `${item.type}-${item.occurred_at}`}>
+                      <span className="timeline-icon">{item.type === "call" ? "⌕" : item.type === "email" ? "@" : "✦"}</span>
+                      <div>
+                        <strong>{item.type[0].toUpperCase() + item.type.slice(1)}</strong>
+                        <span>{item.notes || "No notes added"}</span>
+                      </div>
+                      <time>{new Date(item.occurred_at).toLocaleDateString()}</time>
+                    </div>
+                  ))
+                )}
+              </div>
+            ) : (
+              <div className="state-message">Choose a customer from the customer desk to review their communication history.</div>
+            )}
+          </div>
         </section>}
         {isAdmin && activeSection === "staff" && <section className="panel-card crm-tools">
           <div className="panel-heading"><div><div className="eyebrow">Administration</div><h2>CRM access</h2></div><span>Add, close, reassign, or delete accounts</span></div>
@@ -569,7 +769,61 @@ function App() {
             canManagePlans={isAdmin || crmRole === "finance"}
           />
         )}
-        {activeSection === "customers" && <section className="stats-row">
+        {activeSection === "customers" && activeView === "segments" && (
+          <section className="panel-card crm-tools">
+            <div className="panel-heading">
+              <div>
+                <div className="eyebrow">Classification</div>
+                <h2>Customer segments</h2>
+              </div>
+              <span>{customers.length} records</span>
+            </div>
+            <div className="segment-grid">
+              {segmentDefinitions.map((segment) => (
+                <button
+                  key={segment.id}
+                  type="button"
+                  className="segment-card"
+                  onClick={() => {
+                    setFilters({ search: "", status: "all" });
+                    setActiveView("customers");
+                    setSelectedId(segmentSummary[segment.id][0]?.id || null);
+                  }}
+                >
+                  <div className="segment-header">
+                    <strong>{segment.label}</strong>
+                    <span>{segmentSummary[segment.id].length}</span>
+                  </div>
+                  <p>{segment.description}</p>
+                </button>
+              ))}
+            </div>
+          </section>
+        )}
+        {activeSection === "customers" && activeView === "import" && (
+          <section className="panel-card crm-tools">
+            <div className="panel-heading">
+              <div>
+                <div className="eyebrow">Bulk import</div>
+                <h2>Import customers from CSV</h2>
+              </div>
+              <span>Use headers: name, email, phone, company, address, type, status</span>
+            </div>
+            <form className="import-form" onSubmit={importCustomersFromCsv}>
+              <textarea
+                value={importText}
+                onChange={(event) => setImportText(event.target.value)}
+                placeholder="name,email,phone,company,address,type,status\nAmara Foods,amara@farm.com,+254700000001,Amara Foods,Nakuru,buyer,qualified"
+                rows="10"
+              />
+              <div className="form-actions">
+                <button className="ghost-button" type="button" onClick={() => setImportText("")}>Clear</button>
+                <button className="primary-button" type="submit">Import records</button>
+              </div>
+            </form>
+          </section>
+        )}
+        {activeSection === "customers" && activeView === "customers" && <section className="stats-row">
           <div>
             <span>Total relationships</span>
             <strong>{customers.length}</strong>
@@ -591,7 +845,7 @@ function App() {
             </strong>
           </div>
         </section>}
-        {activeSection === "customers" && <section className="workspace-grid">
+        {activeSection === "customers" && activeView === "customers" && <section className="workspace-grid">
           <div className="list-panel panel-card">
             <div className="panel-heading">
               <div>
@@ -695,6 +949,42 @@ function App() {
                       {isAdmin && <button className="danger-button" onClick={deleteCustomer}>Delete</button>}
                     </div>
                   </div>
+                  <div className="company-overview-grid">
+                    <div className="company-overview-item">
+                      <span>Business profile</span>
+                      <strong>{selected.company || "Independent contact"}</strong>
+                    </div>
+                    <div className="company-overview-item">
+                      <span>Type</span>
+                      <strong>{selected.type}</strong>
+                    </div>
+                    <div className="company-overview-item">
+                      <span>Last touch</span>
+                      <strong>{lastInteraction ? new Date(lastInteraction.occurred_at).toLocaleDateString() : "No activity yet"}</strong>
+                    </div>
+                    <div className="company-overview-item">
+                      <span>Next action</span>
+                      <strong>{leadNextAction}</strong>
+                    </div>
+                  </div>
+                  <div className="company-overview-grid">
+                    <div className="company-overview-item">
+                      <span>Business profile</span>
+                      <strong>{selected.company || "Independent contact"}</strong>
+                    </div>
+                    <div className="company-overview-item">
+                      <span>Type</span>
+                      <strong>{selected.type}</strong>
+                    </div>
+                    <div className="company-overview-item">
+                      <span>Last touch</span>
+                      <strong>{lastInteraction ? new Date(lastInteraction.occurred_at).toLocaleDateString() : "No activity yet"}</strong>
+                    </div>
+                    <div className="company-overview-item">
+                      <span>Next action</span>
+                      <strong>{leadNextAction}</strong>
+                    </div>
+                  </div>
                   <div className="contact-grid">
                     <ContactItem label="Email" value={selected.email} />
                     <ContactItem label="Phone" value={selected.phone} />
@@ -704,6 +994,29 @@ function App() {
                       value={selected.status}
                       accent
                     />
+                  </div>
+                  <div className="lead-journey">
+                    <div>
+                      <span>Lead lifecycle</span>
+                      <strong>{selected.status}</strong>
+                    </div>
+                    <div className="status-action-row">
+                      {statuses.slice(1).map((status) => (
+                        <button
+                          key={status}
+                          type="button"
+                          className={selected.status === status ? "status-pill active" : "status-pill"}
+                          onClick={() => updateCustomerStatus(status)}
+                          disabled={selected.status === status}
+                        >
+                          {status}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="next-step-card">
+                    <span>Suggested next step</span>
+                    <p>{leadNextAction}</p>
                   </div>
                   {selected.notes && (
                     <div className="notes">

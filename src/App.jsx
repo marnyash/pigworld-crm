@@ -71,6 +71,7 @@ function App() {
   });
   const [report, setReport] = useState(null);
   const [plans, setPlans] = useState([]);
+  const [showSplash, setShowSplash] = useState(true);
   const [planForm, setPlanForm] = useState({
     code: "",
     name: "",
@@ -193,6 +194,11 @@ function App() {
     const expire = () => setAuth((current) => ({ ...current, token: "", role: "" }));
     window.addEventListener("pigyworld-auth-expired", expire);
     return () => window.removeEventListener("pigyworld-auth-expired", expire);
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setShowSplash(false), 1800);
+    return () => window.clearTimeout(timer);
   }, []);
 
   const parseCsvLine = (line) => {
@@ -602,6 +608,10 @@ function App() {
   useEffect(() => {
     if (auth.token && canNotify) loadStaff();
   }, [auth.token, farmId, canNotify]);
+
+  if (showSplash) {
+    return <SplashScreen />;
+  }
 
   if (!auth.token)
     return (
@@ -1249,6 +1259,20 @@ function FinanceDashboard({
         </div>
       </section>}
     </section>
+  );
+}
+
+function SplashScreen() {
+  return (
+    <div className="splash-screen">
+      <div className="splash-card">
+        <div className="brand-mark splash-logo">P</div>
+        <div className="splash-copy">
+          <span className="eyebrow">Pig World</span>
+          <h1>Customer desk</h1>
+        </div>
+      </div>
+    </div>
   );
 }
 

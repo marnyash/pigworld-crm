@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { api, clearSession, ROLE_KEY, saveProfile, saveSession, TOKEN_KEY } from "./api";
 import "./customer-workspace.css";
+import { AdminNavbar } from "./components/AdminNavbar";
+import { CustomerSidebar } from "./components/CustomerSidebar";
 const emptyCustomer = {
   farm_id: "",
   assigned_user_id: "",
@@ -27,15 +29,6 @@ const communicationTemplates = [
   { label: "Delivery check", type: "call", copy: "Checking in on the delivery schedule and any remaining questions before the next order." },
   { label: "Win confirmation", type: "note", copy: "Thanks for choosing Pig World. We’ve confirmed the next steps for onboarding and account activation." },
 ];
-const adminSections = [
-  { id: "home", label: "Home", icon: "⌂" },
-  { id: "customers", label: "Customers", icon: "◈" },
-  { id: "staff", label: "Staff", icon: "♙" },
-  { id: "finance", label: "Finance", icon: "⌁" },
-  { id: "communication", label: "Communication", icon: "✦" },
-  { id: "settings", label: "Settings", icon: "⚙" },
-];
-
 function App() {
   const [customers, setCustomers] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
@@ -741,27 +734,14 @@ function App() {
             <span>Customer desk</span>
           </div>
         </div>
-        {activeSection === "customers" && <nav className="side-nav customer-side-nav" aria-label="Customer navigation">
-          <button className="nav-group-toggle" type="button" onClick={() => setCustomerGroups((current) => ({ ...current, myCustomers: !current.myCustomers }))} aria-expanded={customerGroups.myCustomers}>
-            <span>◈</span><strong>My Customers</strong><b>{customerGroups.myCustomers ? "−" : "+"}</b>
-          </button>
-          {customerGroups.myCustomers && <div className="nav-subgroup">
-            <button className={`nav-item ${activeView === "customers" ? "active" : ""}`} onClick={() => setActiveView("customers")}><span>•</span> Customer List</button>
-            <button className={`nav-item ${activeView === "farm-owners" ? "active" : ""}`} onClick={() => setActiveView("farm-owners")}><span>•</span> Farm Owners</button>
-            <button className={`nav-item ${activeView === "farm-managers" ? "active" : ""}`} onClick={() => setActiveView("farm-managers")}><span>•</span> Farm Managers</button>
-            <button className={`nav-item ${activeView === "farm-workers" ? "active" : ""}`} onClick={() => setActiveView("farm-workers")}><span>•</span> Farm Workers</button>
-            <button className={`nav-item ${activeView === "relationships" ? "active" : ""}`} onClick={() => setActiveView("relationships")}><span>•</span> Relationships</button>
-            <button className={`nav-item ${activeView === "pipeline" ? "active" : ""}`} onClick={() => setActiveView("pipeline")}><span>•</span> Pipeline</button>
-            <button className={`nav-item ${activeView === "import" ? "active" : ""}`} onClick={() => setActiveView("import")}><span>•</span> Import customers</button>
-          </div>}
-          <button className={`nav-item standalone-nav-item ${activeView === "segments" ? "active" : ""}`} onClick={() => setActiveView("segments")}><span>◇</span> Segment</button>
-          <button className="nav-group-toggle" type="button" onClick={() => setCustomerGroups((current) => ({ ...current, orders: !current.orders }))} aria-expanded={customerGroups.orders}>
-            <span>▣</span><strong>Orders</strong><b>{customerGroups.orders ? "−" : "+"}</b>
-          </button>
-          {customerGroups.orders && <div className="nav-subgroup">
-            {["pending", "suspended", "cancelled", "ongoing"].map((status) => <button key={status} className={`nav-item ${activeView === `orders-${status}` ? "active" : ""}`} onClick={() => setActiveView(`orders-${status}`)}><span>•</span> {status[0].toUpperCase() + status.slice(1)} Orders</button>)}
-          </div>}
-        </nav>}
+        {activeSection === "customers" && (
+          <CustomerSidebar
+            activeView={activeView}
+            setActiveView={setActiveView}
+            customerGroups={customerGroups}
+            setCustomerGroups={setCustomerGroups}
+          />
+        )}
         {activeSection === "staff" && <nav className="side-nav">
           <button className="nav-item active"><span>♙</span> Staff list</button>
           <button className="nav-item" onClick={() => showNotice("Policies are managed at farm level.")}> <span>▤</span> Policies</button>
@@ -783,16 +763,7 @@ function App() {
         </div>
       </aside>
       <main className="main-panel">
-        <nav className="admin-navbar" aria-label="Admin navigation">
-          <div className="admin-nav-label">Admin</div>
-          <div className="admin-nav-links">
-            {adminSections.map((section) => (
-              <button key={section.id} className={activeSection === section.id ? "active" : ""} onClick={() => selectSection(section.id)}>
-                <span>{section.icon}</span>{section.label}
-              </button>
-            ))}
-          </div>
-        </nav>
+        <AdminNavbar activeSection={activeSection} selectSection={selectSection} />
         <header className="topbar">
           <div>
             <div className="eyebrow">{isAdmin ? "Admin workspace" : `${crmRole.replace("_", " ")} workspace`}</div>

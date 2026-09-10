@@ -51,6 +51,7 @@ function App() {
   const [notice, setNotice] = useState(null);
   const [farmId, setFarmId] = useState("");
   const [staff, setStaff] = useState([]);
+  const [crmMessages, setCrmMessages] = useState([]);
   const [auth, setAuth] = useState({
     email: "",
     password: "",
@@ -560,6 +561,15 @@ function App() {
       );
     }
   };
+  const loadCrmMessages = async () => {
+    if (!auth.token || !farmId || !canNotify) return;
+    try {
+      const response = await api.get("/crm/notifications", { params: { farm_id: farmId } });
+      setCrmMessages(response.data?.data || []);
+    } catch (error) {
+      showNotice(error.response?.data?.message || "Unable to load CRM messages.", "error");
+    }
+  };
   const updateStaff = async (member, data) => {
     try {
       const response = await api.patch(`/crm/members/${member.id}`, data);
@@ -615,6 +625,7 @@ function App() {
           : {}),
       });
       setNotification({ message: "", recipient_id: "" });
+      await loadCrmMessages();
       showNotice("Notification sent.", "success");
     } catch (error) {
       showNotice(
@@ -648,7 +659,10 @@ function App() {
     }
   };
   useEffect(() => {
-    if (auth.token) loadStaff();
+    if (auth.token) {
+      loadStaff();
+      loadCrmMessages();
+    }
   }, [auth.token, farmId]);
 
   if (showSplash) {
@@ -756,10 +770,14 @@ function App() {
         {canNotify && activeSection === "communication" && <section className="panel-card crm-tools">
           <div className="panel-heading"><div><div className="eyebrow">Broadcast</div><h2>Send notification</h2></div><span>All staff or one person</span></div>
           <form className="interaction-composer" onSubmit={sendNotification}>
-            <select value={notification.recipient_id} onChange={(event) => setNotification((current) => ({ ...current, recipient_id: event.target.value }))}><option value="">Everyone in this farm</option>{staff.map((member) => <option key={member.id} value={member.id}>{member.name} ({member.crm_role || member.role})</option>)}</select>
+            <select value={notification.recipient_id} onChange={(event) => setNotification((current) => ({ ...current, recipient_id: event.target.value }))}><option value="">Everyone in this farm</option>{staff.map((member) => <option key={member.id} value={member.id}>{member.name} ({member.crm_role || member.role})</option>)}{crmMessages.filter((message) => message.sender_id && !staff.some((member) => String(member.id) === String(message.sender_id))).map((message) => <option key={`app-${message.sender_id}`} value={message.sender_id}>{message.sender_name || message.sender_email || "Farm member"} (app user)</option>)}</select>
             <input required value={notification.message} onChange={(event) => setNotification((current) => ({ ...current, message: event.target.value }))} placeholder="Write a notification message" />
             <button className="primary-button" type="submit">Send</button>
           </form>
+          <div className="crm-message-inbox">
+            <div className="panel-heading"><div><div className="eyebrow">Inbox</div><h2>Messages from the farm app</h2></div><button className="filter-button" type="button" onClick={loadCrmMessages}>Refresh</button></div>
+            {crmMessages.length === 0 ? <div className="state-message">No messages from app users yet.</div> : crmMessages.map((message) => <article className="crm-message" key={message.id}><div><strong>{message.sender_name || "Farm member"}</strong><small>{message.sender_email || ""} · {new Date(message.created_at).toLocaleString()}</small></div><p>{message.message}</p><button className="ghost-button" type="button" onClick={() => setNotification((current) => ({ ...current, recipient_id: message.sender_id, message: `Hi ${message.sender_name || "there"}, ` }))}>Reply</button></article>)}
+          </div>
           <div className="automation-panel">
             <div className="panel-heading"><div><div className="eyebrow">Automation</div><h2>Quick customer follow-up</h2></div><span>Save a note in one click</span></div>
             <div className="automation-grid">

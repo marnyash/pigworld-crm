@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { api, clearSession, ROLE_KEY, saveProfile, saveSession, TOKEN_KEY } from "./api";
 const emptyCustomer = {
   farm_id: "",
+  assigned_user_id: "",
   name: "",
   email: "",
   phone: "",
@@ -38,6 +39,9 @@ function App() {
   const [customers, setCustomers] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
   const [interactions, setInteractions] = useState([]);
+  const [timeline, setTimeline] = useState([]);
+  const [tasks, setTasks] = useState([]);
+  const [taskForm, setTaskForm] = useState({ title: "", notes: "", due_at: "", priority: "normal", assigned_to: "" });
   const [filters, setFilters] = useState({ search: "", status: "all" });
   const [form, setForm] = useState(emptyCustomer);
   const [interaction, setInteraction] = useState({ type: "message", notes: "" });
@@ -326,10 +330,17 @@ function App() {
       setInteractions([]);
       return;
     }
-    api
-      .get(`/crm/customers/${selected.id}/interactions`)
-      .then((response) => setInteractions(response.data?.data || []))
-      .catch(() => showNotice("Unable to load interaction history.", "error"));
+    Promise.all([
+      api.get(`/crm/customers/${selected.id}/interactions`),
+      api.get(`/crm/customers/${selected.id}/tasks`),
+      api.get(`/crm/customers/${selected.id}/timeline`),
+    ])
+      .then(([interactionResponse, taskResponse, timelineResponse]) => {
+        setInteractions(interactionResponse.data?.data || []);
+        setTasks(taskResponse.data?.data || []);
+        setTimeline(timelineResponse.data?.data || []);
+      })
+      .catch(() => showNotice("Unable to load customer workflow history.", "error"));
   }, [selectedId]);
 
   const login = async (event) => {
@@ -443,6 +454,7 @@ function App() {
         { ...interaction, occurred_at: new Date().toISOString() },
       );
       setInteractions((current) => [response.data.data, ...current]);
+      await loadCustomerWorkflow(selected.id);
       setInteraction({ type: "message", notes: "" });
       showNotice("Reply logged.", "success");
     } catch (error) {
@@ -450,6 +462,42 @@ function App() {
         error.response?.data?.message || "Could not log reply.",
         "error",
       );
+    }
+  };
+  const loadCustomerWorkflow = async (customerId) => {
+    const [interactionResponse, taskResponse, timelineResponse] = await Promise.all([
+      api.get(`/crm/customers/${customerId}/interactions`),
+      api.get(`/crm/customers/${customerId}/tasks`),
+      api.get(`/crm/customers/${customerId}/timeline`),
+    ]);
+    setInteractions(interactionResponse.data?.data || []);
+    setTasks(taskResponse.data?.data || []);
+    setTimeline(timelineResponse.data?.data || []);
+  };
+  const saveTask = async (event) => {
+    event.preventDefault();
+    if (!selected || !taskForm.title.trim()) return;
+    try {
+      const response = await api.post(`/crm/customers/${selected.id}/tasks`, {
+        ...taskForm,
+        assigned_to: taskForm.assigned_to || null,
+        due_at: taskForm.due_at ? new Date(taskForm.due_at).toISOString() : null,
+      });
+      setTasks((current) => [response.data.data, ...current]);
+      setTaskForm({ title: "", notes: "", due_at: "", priority: "normal", assigned_to: "" });
+      await loadCustomerWorkflow(selected.id);
+      showNotice("Follow-up task created.", "success");
+    } catch (error) {
+      showNotice(error.response?.data?.message || "Could not create the task.", "error");
+    }
+  };
+  const updateTaskStatus = async (task, status) => {
+    try {
+      await api.patch(`/crm/customers/${selected.id}/tasks/${task.id}`, { status });
+      await loadCustomerWorkflow(selected.id);
+      showNotice(status === "completed" ? "Task completed." : "Task reopened.", "success");
+    } catch (error) {
+      showNotice(error.response?.data?.message || "Could not update the task.", "error");
     }
   };
   const addQuickAutomation = async (template) => {
@@ -474,28 +522,22 @@ function App() {
       );
     }
   };
-  const updateCustomerStatus = async (nextStatus) => {
-    if (!selected || nextStatus === selected.status) return;
+  const updateCustomerStatus = async (customerOrStatus, requestedStatus) => {
+    const customer = typeof customerOrStatus === "object" ? customerOrStatus : selected;
+    const nextStatus = requestedStatus || customerOrStatus;
+    if (!customer || nextStatus === customer.status) return;
     try {
-      const response = await api.put(`/crm/customers/${selected.id}`, {
-        ...selected,
+      const response = await api.put(`/crm/customers/${customer.id}`, {
+        ...customer,
         status: nextStatus,
-        farm_id: Number(selected.farm_id || farmId || 0),
+        farm_id: Number(customer.farm_id || farmId || 0),
       });
       const updated = response.data.data;
       setCustomers((current) =>
         current.map((customer) => (customer.id === updated.id ? updated : customer)),
       );
       setSelectedId(updated.id);
-      setInteractions((current) => [
-        {
-          id: `status-${Date.now()}`,
-          type: "note",
-          notes: `Lead status moved to ${nextStatus}.`,
-          occurred_at: new Date().toISOString(),
-        },
-        ...current,
-      ]);
+      await loadCustomerWorkflow(updated.id);
       showNotice(`Customer moved to ${nextStatus}.`, "success");
     } catch (error) {
       showNotice(
@@ -505,7 +547,7 @@ function App() {
     }
   };
   const loadStaff = async () => {
-    if (!canNotify || !farmId) return;
+    if (!auth.token || !farmId) return;
     try {
       const response = await api.get("/crm/members", {
         params: { farm_id: farmId },
@@ -606,8 +648,8 @@ function App() {
     }
   };
   useEffect(() => {
-    if (auth.token && canNotify) loadStaff();
-  }, [auth.token, farmId, canNotify]);
+    if (auth.token) loadStaff();
+  }, [auth.token, farmId]);
 
   if (showSplash) {
     return <SplashScreen />;
@@ -630,6 +672,7 @@ function App() {
         {activeSection === "customers" && <>
           <nav className="side-nav">
             <button className={`nav-item ${activeView === "customers" ? "active" : ""}`} onClick={() => setActiveView("customers")}><span>◈</span> Customer list</button>
+            <button className={`nav-item ${activeView === "pipeline" ? "active" : ""}`} onClick={() => setActiveView("pipeline")}><span>▥</span> Pipeline board</button>
             <button className={`nav-item ${activeView === "segments" ? "active" : ""}`} onClick={() => setActiveView("segments")}><span>◇</span> Segments</button>
             <button className={`nav-item ${activeView === "import" ? "active" : ""}`} onClick={() => setActiveView("import")}><span>⇧</span> Import</button>
           </nav>
@@ -778,6 +821,9 @@ function App() {
             togglePlan={togglePlan}
             canManagePlans={isAdmin || crmRole === "finance"}
           />
+        )}
+        {activeSection === "customers" && activeView === "pipeline" && (
+          <PipelineBoard customers={customers} onSelect={setSelectedId} onMove={updateCustomerStatus} />
         )}
         {activeSection === "customers" && activeView === "segments" && (
           <section className="panel-card crm-tools">
@@ -934,6 +980,7 @@ function App() {
               <CustomerForm
                 form={form}
                 updateForm={updateForm}
+                staff={staff}
                 onSubmit={saveCustomer}
                 onCancel={() => setEditing(false)}
                 saving={saving}
@@ -1035,6 +1082,14 @@ function App() {
                     </div>
                   )}
                 </section>
+                <TaskPanel
+                  tasks={tasks}
+                  taskForm={taskForm}
+                  setTaskForm={setTaskForm}
+                  staff={staff}
+                  onSubmit={saveTask}
+                  onToggle={updateTaskStatus}
+                />
                 <section className="activity-card panel-card">
                   <div className="panel-heading">
                     <div>
@@ -1042,7 +1097,7 @@ function App() {
                       <span>Keep every conversation in context</span>
                     </div>
                     <span className="activity-count">
-                      {interactions.length} events
+                      {timeline.length} events
                     </span>
                   </div>
                   {canReply && <form
@@ -1080,25 +1135,25 @@ function App() {
                     </button>
                   </form>}
                   <div className="timeline">
-                    {interactions.length === 0 ? (
+                    {timeline.length === 0 ? (
                       <div className="state-message">
                         No activity recorded yet.
                       </div>
                     ) : (
-                      interactions.map((item) => (
+                      timeline.map((item) => (
                         <div className="timeline-item" key={item.id}>
                           <span className="timeline-icon">
-                            {item.type === "call"
+                            {item.subtype === "call"
                               ? "⌕"
-                              : item.type === "email"
+                              : item.subtype === "email"
                                 ? "@"
                                 : "✦"}
                           </span>
                           <div>
                             <strong>
-                              {item.type[0].toUpperCase() + item.type.slice(1)}
+                              {(item.subtype || item.type).replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase())}
                             </strong>
-                            <span>{item.notes || "No notes added"}</span>
+                            <span>{item.notes || item.data?.title || item.data?.to || "No notes added"}</span>
                           </div>
                           <time>
                             {new Date(item.occurred_at).toLocaleDateString()}
@@ -1141,6 +1196,47 @@ function HomeDashboard({ customers, counts, onOpen }) {
         <button onClick={() => onOpen("customers")}><span>Customers</span><strong>{customers.length}</strong><small>View relationships</small></button>
         <button onClick={() => onOpen("staff")}><span>Staff workspace</span><strong>→</strong><small>Manage accounts and access</small></button>
         <button onClick={() => onOpen("finance")}><span>Finance</span><strong>{counts.won || 0}</strong><small>Won relationships this cycle</small></button>
+      </div>
+    </section>
+  );
+}
+
+function PipelineBoard({ customers, onSelect, onMove }) {
+  return (
+    <section className="pipeline-board">
+      {statuses.slice(1).map((status) => (
+        <div className="pipeline-column panel-card" key={status}>
+          <div className="panel-heading">
+            <div><span className={`status-dot ${status}`} /><h2>{status[0].toUpperCase() + status.slice(1)}</h2></div>
+            <span>{customers.filter((customer) => customer.status === status).length}</span>
+          </div>
+          <div className="pipeline-cards">
+            {customers.filter((customer) => customer.status === status).map((customer) => (
+              <article className="pipeline-card" key={customer.id} onClick={() => onSelect(customer.id)}>
+                <button type="button" onClick={() => onSelect(customer.id)}><strong>{customer.name}</strong><span>{customer.company || customer.email || "No company details"}</span></button>
+                <div><small>{customer.assignee?.name || "Unassigned"}</small><select value={customer.status} onChange={(event) => onMove(customer, event.target.value)} onClick={(event) => event.stopPropagation()}><option value={customer.status}>{customer.status}</option>{statuses.slice(1).filter((nextStatus) => nextStatus !== customer.status).map((nextStatus) => <option key={nextStatus} value={nextStatus}>{nextStatus}</option>)}</select></div>
+              </article>
+            ))}
+          </div>
+        </div>
+      ))}
+    </section>
+  );
+}
+
+function TaskPanel({ tasks, taskForm, setTaskForm, staff, onSubmit, onToggle }) {
+  return (
+    <section className="task-panel panel-card">
+      <div className="panel-heading"><div><div className="eyebrow">Follow-up queue</div><h2>Tasks</h2></div><span>{tasks.filter((task) => task.status === "open").length} open</span></div>
+      <form className="task-composer" onSubmit={onSubmit}>
+        <input required value={taskForm.title} onChange={(event) => setTaskForm((current) => ({ ...current, title: event.target.value }))} placeholder="Call customer about next order" />
+        <input type="datetime-local" value={taskForm.due_at} onChange={(event) => setTaskForm((current) => ({ ...current, due_at: event.target.value }))} />
+        <select value={taskForm.priority} onChange={(event) => setTaskForm((current) => ({ ...current, priority: event.target.value }))}><option value="low">Low priority</option><option value="normal">Normal priority</option><option value="high">High priority</option><option value="urgent">Urgent</option></select>
+        <select value={taskForm.assigned_to} onChange={(event) => setTaskForm((current) => ({ ...current, assigned_to: event.target.value }))}><option value="">Unassigned</option>{staff.map((member) => <option key={member.id} value={member.id}>{member.name}</option>)}</select>
+        <button className="primary-button" type="submit">Add task</button>
+      </form>
+      <div className="task-list">
+        {tasks.length === 0 ? <div className="state-message">No follow-up tasks yet.</div> : tasks.map((task) => <div className={`task-row ${task.status}`} key={task.id}><span className={`task-priority ${task.priority}`} /><div><strong>{task.title}</strong><small>{task.assignee?.name || "Unassigned"}{task.due_at ? ` · Due ${new Date(task.due_at).toLocaleString()}` : ""}</small></div><button className="filter-button" type="button" onClick={() => onToggle(task, task.status === "completed" ? "open" : "completed")}>{task.status === "completed" ? "Reopen" : "Complete"}</button></div>)}
       </div>
     </section>
   );
@@ -1277,6 +1373,8 @@ function SplashScreen() {
 }
 
 function Login({ auth, setAuth, onSubmit, notice }) {
+  const [showPassword, setShowPassword] = useState(false);
+
   return (
     <div className="login-screen">
       <div className="login-art">
@@ -1323,18 +1421,42 @@ function Login({ auth, setAuth, onSubmit, notice }) {
         </label>
         <label>
           Password
-          <input
-            type="password"
-            required
-            value={auth.password}
-            onChange={(event) =>
-              setAuth((current) => ({
-                ...current,
-                password: event.target.value,
-              }))
-            }
-            placeholder="Your password"
-          />
+          <span className="password-field">
+            <input
+              type={showPassword ? "text" : "password"}
+              required
+              value={auth.password}
+              onChange={(event) =>
+                setAuth((current) => ({
+                  ...current,
+                  password: event.target.value,
+                }))
+              }
+              placeholder="Your password"
+            />
+            <button
+              className="password-toggle"
+              type="button"
+              aria-label={showPassword ? "Hide password" : "Show password"}
+              title={showPassword ? "Hide password" : "Show password"}
+              onClick={() => setShowPassword((current) => !current)}
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                {showPassword ? (
+                  <>
+                    <path d="M3 3l18 18" />
+                    <path d="M10.6 10.7a2 2 0 0 0 2.7 2.7" />
+                    <path d="M9.9 5.2A10.8 10.8 0 0 1 12 5c5 0 8.5 4.5 9.5 7a16 16 0 0 1-3.1 4.4M6.2 6.2C4.3 7.5 3 9.5 2.5 12c1 2.5 4.5 7 9.5 7 1.1 0 2.1-.2 3-.6" />
+                  </>
+                ) : (
+                  <>
+                    <path d="M2.5 12S6 5 12 5s9.5 7 9.5 7-3.5 7-9.5 7-9.5-7-9.5-7Z" />
+                    <circle cx="12" cy="12" r="2.5" />
+                  </>
+                )}
+              </svg>
+            </button>
+          </span>
         </label>
         <button className="primary-button" type="submit">
           Continue <span>→</span>
@@ -1346,7 +1468,7 @@ function Login({ auth, setAuth, onSubmit, notice }) {
     </div>
   );
 }
-function CustomerForm({ form, updateForm, onSubmit, onCancel, saving }) {
+function CustomerForm({ form, updateForm, onSubmit, onCancel, saving, staff }) {
   return (
     <section className="form-card panel-card">
       <div className="panel-heading">
@@ -1422,6 +1544,13 @@ function CustomerForm({ form, updateForm, onSubmit, onCancel, saving }) {
                   {status[0].toUpperCase() + status.slice(1)}
                 </option>
               ))}
+            </select>
+          </label>
+          <label>
+            Assigned to
+            <select value={form.assigned_user_id || ""} onChange={(event) => updateForm("assigned_user_id", event.target.value)}>
+              <option value="">Unassigned</option>
+              {staff.map((member) => <option key={member.id} value={member.id}>{member.name} ({member.crm_role || member.role})</option>)}
             </select>
           </label>
           <label>

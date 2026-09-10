@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { api, clearSession, ROLE_KEY, saveProfile, saveSession, TOKEN_KEY } from "./api";
+import "./customer-workspace.css";
 const emptyCustomer = {
   farm_id: "",
   assigned_user_id: "",
@@ -70,6 +71,7 @@ function App() {
   const [importText, setImportText] = useState("");
   const [activeSection, setActiveSection] = useState("home");
   const [activeView, setActiveView] = useState("customers");
+  const [customerGroups, setCustomerGroups] = useState({ myCustomers: true, orders: false });
   const [calculator, setCalculator] = useState({
     customers: "",
     amount: "",
@@ -79,6 +81,12 @@ function App() {
   const [dashboard, setDashboard] = useState(null);
   const [dashboardLoading, setDashboardLoading] = useState(false);
   const [dashboardError, setDashboardError] = useState("");
+  const [directory, setDirectory] = useState(null);
+  const [directoryLoading, setDirectoryLoading] = useState(false);
+  const [directoryError, setDirectoryError] = useState("");
+  const [orders, setOrders] = useState({ data: [], meta: null });
+  const [ordersLoading, setOrdersLoading] = useState(false);
+  const [ordersError, setOrdersError] = useState("");
   const [showSplash, setShowSplash] = useState(true);
   const [planForm, setPlanForm] = useState({
     code: "",
@@ -587,6 +595,32 @@ function App() {
       setDashboardLoading(false);
     }
   };
+  const loadDirectory = async () => {
+    if (!auth.token) return;
+    try {
+      setDirectoryLoading(true);
+      setDirectoryError("");
+      const response = await api.get("/crm/directories/overview");
+      setDirectory(response.data?.data || null);
+    } catch (error) {
+      setDirectoryError(error.response?.data?.message || "Unable to load customer directories.");
+    } finally {
+      setDirectoryLoading(false);
+    }
+  };
+  const loadOrders = async (status) => {
+    if (!auth.token) return;
+    try {
+      setOrdersLoading(true);
+      setOrdersError("");
+      const response = await api.get("/crm/orders", { params: { status, per_page: 25 } });
+      setOrders({ data: response.data?.data || [], meta: response.data?.meta || null });
+    } catch (error) {
+      setOrdersError(error.response?.data?.message || "Unable to load customer orders.");
+    } finally {
+      setOrdersLoading(false);
+    }
+  };
   const updateStaff = async (member, data) => {
     try {
       const response = await api.patch(`/crm/members/${member.id}`, data);
@@ -680,8 +714,14 @@ function App() {
       loadStaff();
       loadCrmMessages();
       loadDashboard();
+      loadDirectory();
     }
   }, [auth.token, farmId]);
+
+  useEffect(() => {
+    if (!auth.token || !activeView.startsWith("orders-")) return;
+    loadOrders(activeView.replace("orders-", ""));
+  }, [auth.token, activeView]);
 
   if (showSplash) {
     return <SplashScreen />;
@@ -701,22 +741,27 @@ function App() {
             <span>Customer desk</span>
           </div>
         </div>
-        {activeSection === "customers" && <>
-          <nav className="side-nav">
-            <button className={`nav-item ${activeView === "customers" ? "active" : ""}`} onClick={() => setActiveView("customers")}><span>◈</span> Customer list</button>
-            <button className={`nav-item ${activeView === "pipeline" ? "active" : ""}`} onClick={() => setActiveView("pipeline")}><span>▥</span> Pipeline board</button>
-            <button className={`nav-item ${activeView === "segments" ? "active" : ""}`} onClick={() => setActiveView("segments")}><span>◇</span> Segments</button>
-            <button className={`nav-item ${activeView === "import" ? "active" : ""}`} onClick={() => setActiveView("import")}><span>⇧</span> Import</button>
-          </nav>
-          <div className="side-caption">Pipeline</div>
-          <div className="pipeline-list">
-            {statuses.slice(1).map((status) => (
-              <button key={status} onClick={() => setFilters((current) => ({ ...current, status }))}>
-                <span className={`status-dot ${status}`} />{status[0].toUpperCase() + status.slice(1)}<b>{counts[status] || 0}</b>
-              </button>
-            ))}
-          </div>
-        </>}
+        {activeSection === "customers" && <nav className="side-nav customer-side-nav" aria-label="Customer navigation">
+          <button className="nav-group-toggle" type="button" onClick={() => setCustomerGroups((current) => ({ ...current, myCustomers: !current.myCustomers }))} aria-expanded={customerGroups.myCustomers}>
+            <span>◈</span><strong>My Customers</strong><b>{customerGroups.myCustomers ? "−" : "+"}</b>
+          </button>
+          {customerGroups.myCustomers && <div className="nav-subgroup">
+            <button className={`nav-item ${activeView === "customers" ? "active" : ""}`} onClick={() => setActiveView("customers")}><span>•</span> Customer List</button>
+            <button className={`nav-item ${activeView === "farm-owners" ? "active" : ""}`} onClick={() => setActiveView("farm-owners")}><span>•</span> Farm Owners</button>
+            <button className={`nav-item ${activeView === "farm-managers" ? "active" : ""}`} onClick={() => setActiveView("farm-managers")}><span>•</span> Farm Managers</button>
+            <button className={`nav-item ${activeView === "farm-workers" ? "active" : ""}`} onClick={() => setActiveView("farm-workers")}><span>•</span> Farm Workers</button>
+            <button className={`nav-item ${activeView === "relationships" ? "active" : ""}`} onClick={() => setActiveView("relationships")}><span>•</span> Relationships</button>
+            <button className={`nav-item ${activeView === "pipeline" ? "active" : ""}`} onClick={() => setActiveView("pipeline")}><span>•</span> Pipeline</button>
+            <button className={`nav-item ${activeView === "import" ? "active" : ""}`} onClick={() => setActiveView("import")}><span>•</span> Import customers</button>
+          </div>}
+          <button className={`nav-item standalone-nav-item ${activeView === "segments" ? "active" : ""}`} onClick={() => setActiveView("segments")}><span>◇</span> Segment</button>
+          <button className="nav-group-toggle" type="button" onClick={() => setCustomerGroups((current) => ({ ...current, orders: !current.orders }))} aria-expanded={customerGroups.orders}>
+            <span>▣</span><strong>Orders</strong><b>{customerGroups.orders ? "−" : "+"}</b>
+          </button>
+          {customerGroups.orders && <div className="nav-subgroup">
+            {["pending", "suspended", "cancelled", "ongoing"].map((status) => <button key={status} className={`nav-item ${activeView === `orders-${status}` ? "active" : ""}`} onClick={() => setActiveView(`orders-${status}`)}><span>•</span> {status[0].toUpperCase() + status.slice(1)} Orders</button>)}
+          </div>}
+        </nav>}
         {activeSection === "staff" && <nav className="side-nav">
           <button className="nav-item active"><span>♙</span> Staff list</button>
           <button className="nav-item" onClick={() => showNotice("Policies are managed at farm level.")}> <span>▤</span> Policies</button>
@@ -785,6 +830,8 @@ function App() {
           <div className={`notice ${notice.tone}`}>{notice.message}</div>
         )}
         {activeSection === "home" && <HomeDashboard dashboard={dashboard} loading={dashboardLoading} error={dashboardError} onRefresh={loadDashboard} onOpen={selectSection} onOpenStatus={(status) => { setFilters({ search: "", status }); selectSection("customers"); }} />}
+        {activeSection === "customers" && ["farm-owners", "farm-managers", "farm-workers", "relationships"].includes(activeView) && <DirectoryView view={activeView} directory={directory} loading={directoryLoading} error={directoryError} onRefresh={loadDirectory} />}
+        {activeSection === "customers" && activeView.startsWith("orders-") && <OrdersView status={activeView.replace("orders-", "")} orders={orders} loading={ordersLoading} error={ordersError} onRefresh={() => loadOrders(activeView.replace("orders-", ""))} />}
         {canNotify && activeSection === "communication" && <section className="panel-card crm-tools">
           <div className="panel-heading"><div><div className="eyebrow">Broadcast</div><h2>Send notification</h2></div><span>All staff or one person</span></div>
           <form className="interaction-composer" onSubmit={sendNotification}>
@@ -997,7 +1044,7 @@ function App() {
                     <span className="customer-row-copy">
                       <strong>{customer.name}</strong>
                       <small>
-                        {customer.company ||
+                        {customer.farm_name || customer.company ||
                           customer.email ||
                           "No company details"}
                       </small>
@@ -1281,6 +1328,33 @@ function HomeDashboard({ dashboard, loading, error, onRefresh, onOpen, onOpenSta
 
 function HomeKpi({ label, value, onClick }) {
   return <button className="home-kpi" type="button" onClick={onClick}><span>{label}</span><strong>{value ?? 0}</strong><small>Open related workspace</small></button>;
+}
+
+function DirectoryView({ view, directory, loading, error, onRefresh }) {
+  const labels = { "farm-owners": "Farm Owners", "farm-managers": "Farm Managers", "farm-workers": "Farm Workers", relationships: "Relationships" };
+  if (loading && !directory) return <section className="panel-card directory-panel"><div className="eyebrow">Customer directory</div><h2>Loading {labels[view]}</h2><p className="directory-help">Fetching all accessible farms and members.</p></section>;
+  if (error && !directory) return <section className="panel-card directory-panel"><div className="eyebrow">Customer directory</div><h2>Directory unavailable</h2><p className="directory-help">{error}</p><button className="primary-button" type="button" onClick={onRefresh}>Try again</button></section>;
+  if (!directory) return <section className="panel-card directory-panel"><h2>{labels[view]}</h2><div className="state-message">No directory data available.</div></section>;
+  if (view === "relationships") return <RelationshipTable rows={directory.relationships || []} />;
+  const rows = directory[view.replace("-", "_")] || [];
+  return <section className="panel-card directory-panel"><div className="panel-heading"><div><div className="eyebrow">Customer directory</div><h2>{labels[view]}</h2></div><div className="directory-actions"><span>{rows.length} members</span><button className="filter-button" type="button" onClick={onRefresh}>Refresh</button></div></div><DirectoryTable rows={rows} /></section>;
+}
+
+function DirectoryTable({ rows }) {
+  if (!rows.length) return <div className="state-message">No members match this directory.</div>;
+  return <div className="data-table-wrap"><table className="data-table"><thead><tr><th>Name</th><th>Farm</th><th>Contact</th><th>Role</th><th>Status</th></tr></thead><tbody>{rows.map((row) => <tr key={`${row.farm_id}-${row.id}`}><td><strong>{row.name}</strong></td><td>{row.farm_name || "-"}</td><td><span>{row.email || "-"}</span><small>{row.phone || ""}</small></td><td>{roleLabel(row.role)}</td><td><span className={`status-label ${row.status === "active" ? "won" : "lost"}`}>{row.status || "active"}</span></td></tr>)}</tbody></table></div>;
+}
+
+function RelationshipTable({ rows }) {
+  return <section className="panel-card directory-panel"><div className="panel-heading"><div><div className="eyebrow">Farm relationships</div><h2>Farm ownership and team</h2></div><span>{rows.length} farms</span></div>{rows.length === 0 ? <div className="state-message">No accessible farms found.</div> : <div className="relationship-list">{rows.map((row) => <article className="relationship-row" key={row.farm_id}><div><strong>{row.farm_name}</strong><small>Owner: {row.owner?.name || "Not assigned"}</small></div><div><span>Managers</span><strong>{row.managers?.map((member) => member.name).join(", ") || "None"}</strong></div><div><span>Workers</span><strong>{row.workers?.length ? `${row.workers.length} assigned` : "None"}</strong></div></article>)}</div>}</section>;
+}
+
+function OrdersView({ status, orders, loading, error, onRefresh }) {
+  return <section className="panel-card directory-panel"><div className="panel-heading"><div><div className="eyebrow">Customer orders</div><h2>{status[0].toUpperCase() + status.slice(1)} Orders</h2></div><div className="directory-actions"><span>{orders.meta?.total ?? 0} orders</span><button className="filter-button" type="button" onClick={onRefresh}>Refresh</button></div></div>{loading ? <div className="state-message">Loading orders...</div> : error ? <div className="directory-error"><p>{error}</p><button className="primary-button" type="button" onClick={onRefresh}>Try again</button></div> : !orders.data.length ? <div className="state-message">No {status} orders found.</div> : <div className="data-table-wrap"><table className="data-table"><thead><tr><th>Reference</th><th>Customer</th><th>Farm</th><th>Total</th><th>Ordered</th><th>Status</th></tr></thead><tbody>{orders.data.map((order) => <tr key={order.id}><td><strong>{order.reference}</strong></td><td>{order.customer_name || "-"}</td><td>{order.farm_name || "-"}</td><td>{order.currency} {order.total_amount}</td><td>{order.ordered_at || "-"}</td><td><span className={`status-label ${order.status === "cancelled" ? "lost" : order.status === "ongoing" ? "contacted" : "qualified"}`}>{order.status}</span></td></tr>)}</tbody></table></div>}</section>;
+}
+
+function roleLabel(role) {
+  return { farmOwner: "Farm Owner", farmManager: "Farm Manager", farmWorker: "Farm Worker" }[role] || role || "-";
 }
 
 function PipelineBoard({ customers, onSelect, onMove }) {

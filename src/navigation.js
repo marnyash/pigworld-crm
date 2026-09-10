@@ -15,6 +15,4 @@ export const customerNavLinks = [
   { id: "farm-managers", label: "Farm Managers" },
   { id: "farm-workers", label: "Farm Workers" },
   { id: "relationships", label: "Relationships" },
-  { id: "pipeline", label: "Pipeline" },
-  { id: "import", label: "Import customers" },
 ];

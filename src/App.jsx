@@ -7,11 +7,18 @@ import { HomeDashboard } from "./components/HomeDashboard";
 import { DirectoryView } from "./components/DirectoryView";
 import { OrdersView } from "./components/OrdersView";
 import { PipelineBoard } from "./components/PipelineBoard";
-import { FinanceDashboard } from "./components/FinanceDashboard";
+import { FinanceSidebar } from "./components/FinanceSidebar";
+import { FinanceWorkspace } from "./components/FinanceWorkspace";
 import { Login } from "./components/Login";
 import { SplashScreen } from "./components/SplashScreen";
 import { CustomerForm } from "./components/CustomerForm";
 import { TaskPanel } from "./components/TaskPanel";
+import { StaffSidebar } from "./components/StaffSidebar";
+import { StaffWorkspace } from "./components/StaffWorkspace";
+import { CommunicationSidebar } from "./components/CommunicationSidebar";
+import { CommunicationWorkspace } from "./components/CommunicationWorkspace";
+import { SettingsSidebar } from "./components/SettingsSidebar";
+import { SettingsWorkspace } from "./components/SettingsWorkspace";
 const emptyCustomer = {
   farm_id: "",
   assigned_user_id: "",
@@ -54,7 +61,19 @@ function App() {
   const [notice, setNotice] = useState(null);
   const [farmId, setFarmId] = useState("");
   const [staff, setStaff] = useState([]);
+  const [staffGroups, setStaffGroups] = useState({ directory: true });
+  const [policies, setPolicies] = useState([]);
+  const [policyForm, setPolicyForm] = useState({ title: "", audience: "all", effectiveDate: "", summary: "" });
+  const [staffLogs, setStaffLogs] = useState([]);
   const [crmMessages, setCrmMessages] = useState([]);
+  const [profile, setProfile] = useState(null);
+  const [profileForm, setProfileForm] = useState({ name: "" });
+  const [passwordForm, setPasswordForm] = useState({ current_password: "", new_password: "", new_password_confirmation: "" });
+  const [settingsFarm, setSettingsFarm] = useState(null);
+  const [farmName, setFarmName] = useState("");
+  const [farmMembers, setFarmMembers] = useState([]);
+  const [memberPermissions, setMemberPermissions] = useState({});
+  const [farmNotifications, setFarmNotifications] = useState([]);
   const [auth, setAuth] = useState({
     email: "",
     password: "",
@@ -66,6 +85,7 @@ function App() {
   const canWriteCustomers = isAdmin || crmRole === "finance";
   const canReply = isAdmin || crmRole === "customer_support";
   const canNotify = isAdmin || crmRole === "customer_support";
+  const canReadCommunication = isAdmin || crmRole === "finance" || crmRole === "customer_support";
   const [notification, setNotification] = useState({
     message: "",
     recipient_id: "",
@@ -108,8 +128,10 @@ function App() {
   const selectSection = (section) => {
     setActiveSection(section);
     if (section === "customers") setActiveView("customers");
-    if (section === "finance") setActiveView("reports");
-    if (section === "communication") setActiveView("communications");
+    if (section === "staff") setActiveView("staff-list");
+    if (section === "finance") setActiveView("finance-overview");
+    if (section === "communication") setActiveView("communication-inbox");
+    if (section === "settings") setActiveView("settings-profile");
   };
   const selected = useMemo(
     () => customers.find((customer) => customer.id === selectedId) || null,
@@ -198,9 +220,14 @@ function App() {
       .then((response) => {
         if (!active) return;
         const session = saveProfile(response);
+        setProfile(session.user);
+        setProfileForm({ name: session.user.name || "" });
         const role = session.user.crm_role || (session.user.role === "farmOwner" ? "admin" : "customer_support");
         const nextFarmId = session.farms[0]?.id ? String(session.farms[0].id) : "";
         setFarmId(nextFarmId);
+        const nextFarm = session.farms[0] || null;
+        setSettingsFarm(nextFarm);
+        setFarmName(nextFarm?.name || "");
         setForm((current) => ({ ...current, farm_id: nextFarmId }));
         setAuth((current) => ({ ...current, role }));
       })
@@ -369,12 +396,17 @@ function App() {
       const farms = session.farms;
       const selectedFarmId = farms[0]?.id ? String(farms[0].id) : "";
       const user = session.user;
+      setProfile(user);
+      setProfileForm({ name: user.name || "" });
       const role =
         user.crm_role ||
         (user.role === "farmOwner" ? "admin" : "customer_support");
       setFarmId(selectedFarmId);
+      setSettingsFarm(farms[0] || null);
+      setFarmName(farms[0]?.name || "");
       setForm((current) => ({ ...current, farm_id: selectedFarmId }));
       setAuth((current) => ({ ...current, token, role }));
+      setStaffLogs([{ id: `login-${Date.now()}`, staff: user.name || user.email || auth.email, action: "Signed in", module: "CRM", at: new Date().toISOString() }]);
       showNotice(`Welcome back. ${role.replace("_", " ")} workspace loaded.`);
     } catch (error) {
       showNotice(
@@ -575,12 +607,88 @@ function App() {
     }
   };
   const loadCrmMessages = async () => {
-    if (!auth.token || !farmId || !canNotify) return;
+    if (!auth.token || !farmId || !canReadCommunication) return;
     try {
       const response = await api.get("/crm/notifications", { params: { farm_id: farmId } });
       setCrmMessages(response.data?.data || []);
     } catch (error) {
       showNotice(error.response?.data?.message || "Unable to load CRM messages.", "error");
+    }
+  };
+  const loadSettingsData = async () => {
+    if (!auth.token || !farmId) return;
+    try {
+      const [memberResponse, notificationResponse] = await Promise.all([
+        api.get(`/farms/${farmId}/members`),
+        api.get(`/farms/${farmId}/notifications`),
+      ]);
+      const members = memberResponse.data?.data || [];
+      setFarmMembers(members);
+      setMemberPermissions(Object.fromEntries(members.map((member) => [member.id, member.permissions || []])));
+      setFarmNotifications(notificationResponse.data?.data || []);
+    } catch (error) {
+      showNotice(error.response?.data?.message || "Unable to load workspace settings.", "error");
+    }
+  };
+  const saveProfileSettings = async (event) => {
+    event.preventDefault();
+    try {
+      const response = await api.patch("/auth/profile", profileForm);
+      setProfile(response.data?.user || null);
+      setProfileForm({ name: response.data?.user?.name || profileForm.name });
+      showNotice("Profile updated.", "success");
+    } catch (error) {
+      showNotice(error.response?.data?.message || "Could not update your profile.", "error");
+    }
+  };
+  const changePassword = async (event) => {
+    event.preventDefault();
+    if (passwordForm.new_password !== passwordForm.new_password_confirmation) return showNotice("New passwords do not match.", "error");
+    try {
+      await api.post("/auth/change-password", passwordForm);
+      setPasswordForm({ current_password: "", new_password: "", new_password_confirmation: "" });
+      showNotice("Password changed successfully.", "success");
+    } catch (error) {
+      showNotice(error.response?.data?.message || "Could not change your password.", "error");
+    }
+  };
+  const saveFarmSettings = async (event) => {
+    event.preventDefault();
+    if (!settingsFarm || !farmName.trim()) return;
+    try {
+      const response = await api.patch(`/farms/${settingsFarm.id}`, { name: farmName.trim() });
+      const updated = response.data?.data || { ...settingsFarm, name: farmName.trim() };
+      setSettingsFarm(updated);
+      setFarmName(updated.name);
+      showNotice("Farm workspace updated.", "success");
+    } catch (error) {
+      showNotice(error.response?.data?.message || "Could not update the farm workspace.", "error");
+    }
+  };
+  const saveMemberPermissions = async (member) => {
+    try {
+      const response = await api.patch(`/farms/${farmId}/members/${member.id}`, { permissions: memberPermissions[member.id] || [] });
+      setFarmMembers((current) => current.map((item) => item.id === member.id ? response.data?.data || item : item));
+      showNotice(`${member.name}'s permissions updated.`, "success");
+    } catch (error) {
+      showNotice(error.response?.data?.message || "Could not update member permissions.", "error");
+    }
+  };
+  const loadFarmNotifications = async () => {
+    if (!farmId) return;
+    try {
+      const response = await api.get(`/farms/${farmId}/notifications`);
+      setFarmNotifications(response.data?.data || []);
+    } catch (error) {
+      showNotice(error.response?.data?.message || "Unable to load notifications.", "error");
+    }
+  };
+  const markFarmNotificationRead = async (notification) => {
+    try {
+      await api.patch(`/farms/${farmId}/notifications/${notification.id}/read`);
+      setFarmNotifications((current) => current.map((item) => item.id === notification.id ? { ...item, read_at: new Date().toISOString() } : item));
+    } catch (error) {
+      showNotice(error.response?.data?.message || "Could not mark notification as read.", "error");
     }
   };
   const loadDashboard = async () => {
@@ -631,6 +739,7 @@ function App() {
           item.id === member.id ? response.data.data : item,
         ),
       );
+      setStaffLogs((current) => [{ id: `staff-${Date.now()}`, staff: auth.email || "Current user", action: `${data.closed ? "Suspended" : "Updated"} ${member.name}`, module: "Staff", at: new Date().toISOString() }, ...current]);
       showNotice("CRM account updated.", "success");
     } catch (error) {
       showNotice(
@@ -644,6 +753,7 @@ function App() {
     try {
       await api.delete(`/crm/members/${member.id}`);
       setStaff((current) => current.filter((item) => item.id !== member.id));
+      setStaffLogs((current) => [{ id: `staff-${Date.now()}`, staff: auth.email || "Current user", action: `Deleted ${member.name}`, module: "Staff", at: new Date().toISOString() }, ...current]);
       showNotice("CRM account deleted.", "success");
     } catch (error) {
       showNotice(
@@ -660,11 +770,20 @@ function App() {
         farm_id: Number(farmId),
       });
       setStaff((current) => [...current, response.data.data]);
+      setStaffLogs((current) => [{ id: `staff-${Date.now()}`, staff: auth.email || "Current user", action: `Added ${memberForm.name}`, module: "Staff", at: new Date().toISOString() }, ...current]);
       setMemberForm({ name: "", email: "", password: "", crm_role: "finance" });
       showNotice("CRM account added.", "success");
     } catch (error) {
       showNotice(error.response?.data?.message || "Could not add CRM account.", "error");
     }
+  };
+  const createPolicy = (event) => {
+    event.preventDefault();
+    const policy = { id: `policy-${Date.now()}`, ...policyForm };
+    setPolicies((current) => [policy, ...current]);
+    setStaffLogs((current) => [{ id: `policy-${Date.now()}`, staff: auth.email || "Current user", action: `Published ${policy.title}`, module: "Staff policies", at: new Date().toISOString() }, ...current]);
+    setPolicyForm({ title: "", audience: "all", effectiveDate: "", summary: "" });
+    showNotice("Staff policy published.", "success");
   };
   const sendNotification = async (event) => {
     event.preventDefault();
@@ -717,8 +836,9 @@ function App() {
       loadCrmMessages();
       loadDashboard();
       loadDirectory();
+      loadSettingsData();
     }
-  }, [auth.token, farmId]);
+  }, [auth.token, farmId, canReadCommunication]);
 
   useEffect(() => {
     if (!auth.token || !activeView.startsWith("orders-")) return;
@@ -735,7 +855,7 @@ function App() {
     );
   return (
     <div className={`app-shell ${activeSection === "home" ? "home-shell" : ""}`}>
-      <aside className={`sidebar ${activeSection === "home" ? "sidebar-hidden" : ""}`}>
+      {activeSection !== "home" && <aside className="sidebar">
         <div className="brand-block">
           <div className="brand-mark">P</div>
           <div>
@@ -751,11 +871,10 @@ function App() {
             setCustomerGroups={setCustomerGroups}
           />
         )}
-        {activeSection === "staff" && <nav className="side-nav">
-          <button className="nav-item active"><span>♙</span> Staff list</button>
-          <button className="nav-item" onClick={() => showNotice("Policies are managed at farm level.")}> <span>▤</span> Policies</button>
-          <button className="nav-item" onClick={() => showNotice("Staff activity logs will appear here.")}><span>◷</span> Staff logs</button>
-        </nav>}
+        {activeSection === "staff" && <StaffSidebar activeView={activeView} setActiveView={setActiveView} groups={staffGroups} setGroups={setStaffGroups} />}
+        {activeSection === "finance" && <FinanceSidebar activeView={activeView} setActiveView={setActiveView} />}
+        {activeSection === "communication" && <CommunicationSidebar activeView={activeView} setActiveView={setActiveView} />}
+        {activeSection === "settings" && <SettingsSidebar activeView={activeView} setActiveView={setActiveView} />}
         <div className="sidebar-footer">
           <span className="avatar">PW</span>
           <div>
@@ -770,7 +889,7 @@ function App() {
             Logout
           </button>
         </div>
-      </aside>
+      </aside>}
       <main className="main-panel">
         <AdminNavbar activeSection={activeSection} selectSection={selectSection} />
         <header className="topbar">
@@ -780,13 +899,45 @@ function App() {
               {activeSection === "home"
                 ? "Home"
                 : activeSection === "staff"
-                  ? "Staff"
+                  ? activeView === "staff-finance"
+                    ? "Finance staff"
+                    : activeView === "staff-support"
+                      ? "Customer service staff"
+                      : activeView === "policy-new"
+                        ? "New staff policy"
+                        : activeView === "policy-existing"
+                          ? "Existing staff policies"
+                          : activeView === "staff-logs"
+                            ? "Staff logs"
+                            : "Staff"
                   : activeSection === "settings"
-                    ? "Settings"
-                    : activeView === "reports"
-                ? "Finance overview"
-                : activeView === "communications"
-                  ? "Communications"
+                    ? activeView === "settings-security"
+                      ? "Password and security"
+                      : activeView === "settings-farm"
+                        ? "Farm workspace"
+                        : activeView === "settings-members"
+                          ? "Members and permissions"
+                          : activeView === "settings-notifications"
+                            ? "Notifications"
+                            : "My profile"
+                    : activeSection === "finance"
+                    ? activeView === "finance-subscriptions"
+                      ? "Farm subscriptions"
+                      : activeView === "finance-payments"
+                        ? "Payment activity"
+                        : activeView === "finance-plans"
+                          ? "Subscription plans"
+                          : activeView === "finance-reporting"
+                            ? "Revenue reporting"
+                            : "Finance overview"
+                : activeSection === "communication"
+                  ? activeView === "communication-broadcast"
+                    ? "Broadcast"
+                    : activeView === "communication-activity"
+                      ? "Customer activity"
+                      : activeView === "communication-templates"
+                        ? "Communication templates"
+                        : "Communication inbox"
                   : "Customers"}
             </h1>
           </div>
@@ -812,65 +963,16 @@ function App() {
         {activeSection === "home" && <HomeDashboard dashboard={dashboard} loading={dashboardLoading} error={dashboardError} onRefresh={loadDashboard} onOpen={selectSection} onOpenStatus={(status) => { setFilters({ search: "", status }); selectSection("customers"); }} />}
         {activeSection === "customers" && ["farm-owners", "farm-managers", "farm-workers", "relationships"].includes(activeView) && <DirectoryView view={activeView} directory={directory} loading={directoryLoading} error={directoryError} onRefresh={loadDirectory} />}
         {activeSection === "customers" && activeView.startsWith("orders-") && <OrdersView status={activeView.replace("orders-", "")} orders={orders} loading={ordersLoading} error={ordersError} onRefresh={() => loadOrders(activeView.replace("orders-", ""))} />}
-        {canNotify && activeSection === "communication" && <section className="panel-card crm-tools">
-          <div className="panel-heading"><div><div className="eyebrow">Broadcast</div><h2>Send notification</h2></div><span>All staff or one person</span></div>
-          <form className="interaction-composer" onSubmit={sendNotification}>
-            <select value={notification.recipient_id} onChange={(event) => setNotification((current) => ({ ...current, recipient_id: event.target.value }))}><option value="">Everyone in this farm</option>{staff.map((member) => <option key={member.id} value={member.id}>{member.name} ({member.crm_role || member.role})</option>)}{crmMessages.filter((message) => message.sender_id && !staff.some((member) => String(member.id) === String(message.sender_id))).map((message) => <option key={`app-${message.sender_id}`} value={message.sender_id}>{message.sender_name || message.sender_email || "Farm member"} (app user)</option>)}</select>
-            <input required value={notification.message} onChange={(event) => setNotification((current) => ({ ...current, message: event.target.value }))} placeholder="Write a notification message" />
-            <button className="primary-button" type="submit">Send</button>
-          </form>
-          <div className="crm-message-inbox">
-            <div className="panel-heading"><div><div className="eyebrow">Inbox</div><h2>Messages from the farm app</h2></div><button className="filter-button" type="button" onClick={loadCrmMessages}>Refresh</button></div>
-            {crmMessages.length === 0 ? <div className="state-message">No messages from app users yet.</div> : crmMessages.map((message) => <article className="crm-message" key={message.id}><div><strong>{message.sender_name || "Farm member"}</strong><small>{message.sender_email || ""} · {new Date(message.created_at).toLocaleString()}</small></div><p>{message.message}</p><button className="ghost-button" type="button" onClick={() => setNotification((current) => ({ ...current, recipient_id: message.sender_id, message: `Hi ${message.sender_name || "there"}, ` }))}>Reply</button></article>)}
-          </div>
-          <div className="automation-panel">
-            <div className="panel-heading"><div><div className="eyebrow">Automation</div><h2>Quick customer follow-up</h2></div><span>Save a note in one click</span></div>
-            <div className="automation-grid">
-              {communicationTemplates.map((template) => (
-                <button key={template.label} type="button" className="automation-card" onClick={() => addQuickAutomation(template)}>
-                  <strong>{template.label}</strong>
-                  <span>{template.copy}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-          <div className="activity-mini-panel">
-            <div className="panel-heading"><div><div className="eyebrow">Recent activity</div><h2>{selected ? `${selected.name} timeline` : "Customer activity"}</h2></div><span>{selected ? "Live history" : "Select a lead"}</span></div>
-            {selected ? (
-              <div className="timeline compact">
-                {interactions.length === 0 ? (
-                  <div className="state-message">No customer activity yet.</div>
-                ) : (
-                  interactions.slice(0, 5).map((item) => (
-                    <div className="timeline-item" key={item.id || `${item.type}-${item.occurred_at}`}>
-                      <span className="timeline-icon">{item.type === "call" ? "⌕" : item.type === "email" ? "@" : "✦"}</span>
-                      <div>
-                        <strong>{item.type[0].toUpperCase() + item.type.slice(1)}</strong>
-                        <span>{item.notes || "No notes added"}</span>
-                      </div>
-                      <time>{new Date(item.occurred_at).toLocaleDateString()}</time>
-                    </div>
-                  ))
-                )}
-              </div>
-            ) : (
-              <div className="state-message">Choose a customer from the customer desk to review their communication history.</div>
-            )}
-          </div>
-        </section>}
+        {activeSection === "communication" && <CommunicationWorkspace view={activeView} messages={crmMessages} staff={staff} notification={notification} setNotification={setNotification} onSubmit={sendNotification} onRefresh={loadCrmMessages} onReply={(message) => { setNotification((current) => ({ ...current, recipient_id: message.sender_id, message: `Hi ${message.sender_name || "there"}, ` })); setActiveView("communication-broadcast"); }} selected={selected} interactions={interactions} templates={communicationTemplates} onUseTemplate={addQuickAutomation} canNotify={canNotify} canReply={canReply} canRead={canReadCommunication} />}
         {isAdmin && activeSection === "staff" && <section className="panel-card crm-tools">
           <div className="panel-heading"><div><div className="eyebrow">Administration</div><h2>CRM access</h2></div><span>Add, close, reassign, or delete accounts</span></div>
           <form className="staff-row" onSubmit={addStaff}><input required value={memberForm.name} onChange={(event) => setMemberForm((current) => ({ ...current, name: event.target.value }))} placeholder="Name" /><input required type="email" value={memberForm.email} onChange={(event) => setMemberForm((current) => ({ ...current, email: event.target.value }))} placeholder="Email" /><input required type="password" minLength="8" value={memberForm.password} onChange={(event) => setMemberForm((current) => ({ ...current, password: event.target.value }))} placeholder="Temporary password" /><select value={memberForm.crm_role} onChange={(event) => setMemberForm((current) => ({ ...current, crm_role: event.target.value }))}><option value="finance">Finance</option><option value="customer_support">Customer support</option></select><button className="primary-button" type="submit">Add account</button></form>
           {staff.filter((member) => member.crm_role !== "admin").map((member) => <div className="staff-row" key={member.id}><strong>{member.name}</strong><span>{member.email}</span><select value={member.crm_role || ""} onChange={(event) => updateStaff(member, { crm_role: event.target.value })}><option value="finance">Finance</option><option value="customer_support">Customer support</option></select><button className="filter-button" onClick={() => updateStaff(member, { closed: !member.crm_closed_at })}>{member.crm_closed_at ? "Unsuspend" : "Suspend"}</button><button className="danger-button" onClick={() => deleteStaff(member)}>Delete</button></div>)}
         </section>}
-        {activeSection === "settings" && <section className="panel-card section-placeholder">
-          <div className="eyebrow">Workspace preferences</div>
-          <h2>Settings</h2>
-          <p>Manage workspace preferences, notifications, and account defaults from this area.</p>
-          <button className="ghost-button" onClick={() => showNotice("Settings controls are being connected to the workspace API.")}>Workspace settings</button>
-        </section>}
+        {activeSection === "staff" && <StaffWorkspace view={activeView} members={staff} policies={policies} policyForm={policyForm} setPolicyForm={setPolicyForm} onCreatePolicy={createPolicy} logs={staffLogs} onUpdate={updateStaff} onDelete={deleteStaff} isAdmin={isAdmin} />}
+        {activeSection === "settings" && <SettingsWorkspace view={activeView} user={profile} profileForm={profileForm} setProfileForm={setProfileForm} onSaveProfile={saveProfileSettings} passwordForm={passwordForm} setPasswordForm={setPasswordForm} onChangePassword={changePassword} farm={settingsFarm} farmName={farmName} setFarmName={setFarmName} onSaveFarm={saveFarmSettings} canEditFarm={Boolean(settingsFarm)} members={farmMembers} canManageMembers={isAdmin || profile?.role === "farmOwner"} memberPermissions={memberPermissions} setMemberPermissions={setMemberPermissions} onSaveMember={saveMemberPermissions} notifications={farmNotifications} onRefreshNotifications={loadFarmNotifications} onReadNotification={markFarmNotificationRead} />}
         {activeSection === "finance" && (
-          <FinanceDashboard
+          <FinanceWorkspace
             customers={customers}
             counts={counts}
             report={report}

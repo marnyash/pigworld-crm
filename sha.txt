@@ -1,0 +1,23 @@
+
+
+Backed up /home/pigworldsmart/.ssh/id_rsa to /home/pigworldsmart/.ssh/id_rsa.1788165164
+Backed up /home/pigworldsmart/.ssh/id_rsa.pub to /home/pigworldsmart/.ssh/id_rsa.1788165164.pub
+Generating public/private rsa key pair.
+Enter passphrase (empty for no passphrase): 
+Enter same passphrase again: 
+Your identification has been saved in /home/pigworldsmart/.ssh/id_rsa.
+Your public key has been saved in /home/pigworldsmart/.ssh/id_rsa.pub.
+The key fingerprint is:
+SHA256:nPorUdMpf0e8RM3QWbYaNd5pNDz/xg16NEavK/e8zKU 
+The key's randomart image is:
++---[RSA 2048]----+
+|              oX=|
+|              *=X|
+|         . . = *+|
+|       .+.o   % o|
+|       .S+   B *o|
+|      ..  . o = =|
+|      ..   . o o.|
+|      ..    . =o.|
+|       .o.   oE=+|
++----[SHA256]-----+

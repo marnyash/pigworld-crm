@@ -1,0 +1,4 @@
+---
+deployment:
+  tasks:
+    - /bin/bash -lc 'cd /home/pigworldsmart/crm.pigworldsmart.com && npm ci && npm run build && cp -R dist/. /home/pigworldsmart/crm.pigworldsmart.com/'

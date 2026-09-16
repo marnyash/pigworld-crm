@@ -1,4 +1,4 @@
 ---
 deployment:
   tasks:
-    - /bin/bash -lc 'cd /home/pigworldsmart/crm.pigworldsmart.com && npm ci && npm run build && cp -R dist/. /home/pigworldsmart/crm.pigworldsmart.com/'
+    - /bin/bash -lc 'cd /home/pigworldsmart/crm.pigworldsmart.com && rm -rf /tmp/pigworld-crm-dist && mkdir -p /tmp/pigworld-crm-dist && unzip -q -o dist.zip -d /tmp/pigworld-crm-dist && cp -R /tmp/pigworld-crm-dist/dist/. /home/pigworldsmart/crm.pigworldsmart.com/'

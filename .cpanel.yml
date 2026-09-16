@@ -1,4 +1,4 @@
 ---
 deployment:
   tasks:
-    - /bin/bash -lc 'cd /home/pigworldsmart/crm.pigworldsmart.com && rm -rf /tmp/pigworld-crm-dist && mkdir -p /tmp/pigworld-crm-dist && unzip -q -o dist.zip -d /tmp/pigworld-crm-dist && cp -R /tmp/pigworld-crm-dist/dist/. /home/pigworldsmart/crm.pigworldsmart.com/'
+    - /bin/bash -lc 'cd /home/pigworldsmart/crm.pigworldsmart.com && rm -rf /home/pigworldsmart/crm-build && mkdir -p /home/pigworldsmart/crm-build && unzip -q -o dist.zip -d /home/pigworldsmart/crm-build && cp -R /home/pigworldsmart/crm-build/dist/. /home/pigworldsmart/crm.pigworldsmart.com/'

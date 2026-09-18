@@ -33,6 +33,29 @@ const emptyCustomer = {
 };
 const statuses = ["all", "new", "contacted", "qualified", "won", "lost"];
 const interactionTypes = ["message", "call", "email", "visit", "meeting", "note"];
+const defaultAdminAccounts = {
+  admin: {
+    email: "admin@pigworld.local",
+    password: "admin123",
+    name: "Pig World Admin",
+    role: "admin",
+    farm: { id: "demo-farm", name: "Demo Farm" },
+  },
+  finance: {
+    email: "finance@pigworld.local",
+    password: "finance123",
+    name: "Pig World Finance",
+    role: "finance",
+    farm: { id: "demo-farm", name: "Demo Farm" },
+  },
+  support: {
+    email: "support@pigworld.local",
+    password: "support123",
+    name: "Pig World Support",
+    role: "customer_support",
+    farm: { id: "demo-farm", name: "Demo Farm" },
+  },
+};
 const segmentDefinitions = [
   { id: "hot", label: "Hot leads", description: "Fresh opportunities ready for follow-up", predicate: (customer) => ["new", "contacted"].includes(customer.status) },
   { id: "priority", label: "Priority buyers", description: "Qualified prospects with strong conversion potential", predicate: (customer) => customer.type === "buyer" || customer.status === "qualified" },
@@ -186,9 +209,35 @@ function App() {
     setNotice({ message, tone });
     window.setTimeout(() => setNotice(null), 3500);
   };
+  const completeDemoSession = (account) => {
+    const demoUser = {
+      id: `demo-${account.role}`,
+      name: account.name,
+      email: account.email,
+      role: account.role === "admin" ? "farmOwner" : "farmWorker",
+      crm_role: account.role,
+    };
+    const demoSession = {
+      access_token: `demo-${account.role}-token`,
+      refresh_token: `demo-${account.role}-refresh-token`,
+      user: demoUser,
+      farms: [{ id: account.farm.id, name: account.farm.name }],
+    };
+    saveSession({ data: demoSession });
+    const nextFarmId = String(account.farm.id);
+    setProfile(demoUser);
+    setProfileForm({ name: demoUser.name || "" });
+    setFarmId(nextFarmId);
+    setSettingsFarm(account.farm);
+    setFarmName(account.farm.name || "");
+    setForm((current) => ({ ...current, farm_id: nextFarmId }));
+    setAuth((current) => ({ ...current, token: demoSession.access_token, role: account.role }));
+    setStaffLogs([{ id: `demo-login-${Date.now()}`, staff: demoUser.name, action: "Signed in with demo access", module: "CRM", at: new Date().toISOString() }]);
+    showNotice(`Demo access loaded for ${account.name}.`, "success");
+  };
   const logout = async () => {
     try {
-      if (auth.token) await api.post("/auth/logout");
+      if (auth.token && !auth.token.startsWith("demo-")) await api.post("/auth/logout");
     } catch {
       // The local session must still end when the server is unavailable.
     } finally {
@@ -199,6 +248,11 @@ function App() {
   };
   useEffect(() => {
     if (!auth.token) return undefined;
+    if (auth.token.startsWith("demo-")) {
+      const demoAccount = Object.values(defaultAdminAccounts).find((account) => `demo-${account.role}-token` === auth.token);
+      if (demoAccount) completeDemoSession(demoAccount);
+      return undefined;
+    }
     let timer;
     const resetIdleTimer = () => {
       window.clearTimeout(timer);
@@ -215,6 +269,11 @@ function App() {
 
   useEffect(() => {
     if (!auth.token) return undefined;
+    if (auth.token.startsWith("demo-")) {
+      const demoAccount = Object.values(defaultAdminAccounts).find((account) => `demo-${account.role}-token` === auth.token);
+      if (demoAccount) completeDemoSession(demoAccount);
+      return undefined;
+    }
     let active = true;
     api.get("/auth/me")
       .then((response) => {
@@ -386,6 +445,13 @@ function App() {
 
   const login = async (event) => {
     event.preventDefault();
+    const demoAccount = Object.values(defaultAdminAccounts).find(
+      (account) => account.email.toLowerCase() === String(auth.email).trim().toLowerCase() && account.password === auth.password,
+    );
+    if (demoAccount) {
+      completeDemoSession(demoAccount);
+      return;
+    }
     try {
       const response = await api.post("/auth/login", {
         identifier: auth.email,

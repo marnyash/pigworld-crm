@@ -2,6 +2,11 @@ import { useState } from "react";
 
 export function Login({ auth, setAuth, onSubmit, notice }) {
   const [showPassword, setShowPassword] = useState(false);
+  const demoUsers = [
+    { label: "Admin", email: "admin@pigworld.local", password: "admin123" },
+    { label: "Finance", email: "finance@pigworld.local", password: "finance123" },
+    { label: "Support", email: "support@pigworld.local", password: "support123" },
+  ];
 
   return (
     <div className="login-screen">
@@ -89,8 +94,24 @@ export function Login({ auth, setAuth, onSubmit, notice }) {
         <button className="primary-button" type="submit">
           Continue <span>→</span>
         </button>
+        <div className="demo-login-row" style={{ display: "grid", gap: "0.5rem", marginTop: "0.25rem" }}>
+          <div className="eyebrow">Default access</div>
+          {demoUsers.map((demoUser) => (
+            <button
+              key={demoUser.email}
+              type="button"
+              className="secondary-button"
+              style={{ width: "100%", textAlign: "left" }}
+              onClick={() => {
+                setAuth((current) => ({ ...current, email: demoUser.email, password: demoUser.password }));
+              }}
+            >
+              Use {demoUser.label} demo login
+            </button>
+          ))}
+        </div>
         <small className="login-help">
-          Protected by your Pig World account
+          Protected by your Pig World account. Demo accounts work while the API is still coming online.
         </small>
       </form>
     </div>

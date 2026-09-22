@@ -1,4 +1,15 @@
 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,600;1,600&display=swap');
+@keyframes crmPageEnter{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+@keyframes crmCardEnter{from{opacity:0;transform:translateY(10px) scale(.985)}to{opacity:1;transform:translateY(0) scale(1)}}
+.main-panel>section,.main-panel>.home-dashboard{animation:crmPageEnter .42s cubic-bezier(.22,.61,.36,1) both}
+.main-panel>.home-dashboard .home-intro{animation:crmCardEnter .5s .04s cubic-bezier(.22,.61,.36,1) both}
+.main-panel>.home-dashboard .home-kpi{animation:crmCardEnter .42s cubic-bezier(.22,.61,.36,1) both}
+.main-panel>.home-dashboard .home-kpi:nth-child(2){animation-delay:.04s}.main-panel>.home-dashboard .home-kpi:nth-child(3){animation-delay:.08s}.main-panel>.home-dashboard .home-kpi:nth-child(4){animation-delay:.12s}.main-panel>.home-dashboard .home-kpi:nth-child(5){animation-delay:.16s}.main-panel>.home-dashboard .home-kpi:nth-child(6){animation-delay:.2s}
+.home-panel,.panel-card,.stats-row>div,.workspace-grid>*{transition:transform .22s ease,box-shadow .22s ease,border-color .22s ease}
+.home-panel:hover,.panel-card:hover,.stats-row>div:hover,.workspace-grid>*:hover{transform:translateY(-3px);box-shadow:0 14px 30px rgba(36,53,45,.08)}
+.home-pipeline button,.home-task-list button,.home-kpi,.admin-nav-links button,.nav-item,.filter-button,.primary-button,.ghost-button{transition:transform .18s ease,background-color .18s ease,border-color .18s ease,color .18s ease,box-shadow .18s ease}
+.home-pipeline button:active,.home-task-list button:active,.home-kpi:active,.admin-nav-links button:active,.nav-item:active,.filter-button:active,.primary-button:active,.ghost-button:active{transform:scale(.97)}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;scroll-behavior:auto!important;transition-duration:.01ms!important}}
 .app-shell.home-shell{display:block}
 .home-shell .main-panel{max-width:1680px;padding:32px 4vw 64px}
 .home-shell .home-dashboard{width:100%;grid-template-columns:1fr;gap:24px}

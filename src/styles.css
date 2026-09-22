@@ -1,7 +1,8 @@
 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,600;1,600&display=swap');
+.app-shell.home-shell{display:block}
 .home-shell .main-panel{max-width:1680px;padding:32px 4vw 64px}
 .home-shell .home-dashboard{width:100%;grid-template-columns:1fr;gap:24px}
-.home-shell .home-intro{width:100%;min-height:210px;padding:38px 44px}
+.home-shell .home-intro{width:100%;min-height:210px;padding:38px 44px;background:linear-gradient(120deg,#173e2c 0%,#286846 62%,#4f8050 100%);color:#f7fbf2}
 .home-shell .home-kpis{width:100%;grid-template-columns:repeat(6,minmax(0,1fr));gap:14px}
 .home-shell .home-content-grid{width:100%;grid-template-columns:repeat(12,minmax(0,1fr));gap:18px}
 .home-shell .home-content-grid .home-panel:nth-child(1){grid-column:span 7}

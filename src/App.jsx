@@ -949,7 +949,7 @@ function App() {
     <div className={`app-shell ${activeSection === "home" ? "home-shell" : ""}`}>
       {activeSection !== "home" && <aside className="sidebar">
         <div className="brand-block">
-          <div className="brand-mark">P</div>
+          <img className="brand-logo" src="./pig-world-logo.jpeg" alt="Pig World Smart Farm" />
           <div>
             <strong>Pig World</strong>
             <span>Customer desk</span>
@@ -968,7 +968,7 @@ function App() {
         {activeSection === "communication" && <CommunicationSidebar activeView={activeView} setActiveView={setActiveView} />}
         {activeSection === "settings" && <SettingsSidebar activeView={activeView} setActiveView={setActiveView} />}
         <div className="sidebar-footer">
-          <span className="avatar">PW</span>
+          <img className="workspace-logo" src="./pig-world-logo.jpeg" alt="Pig World Smart Farm" />
           <div>
             <strong>Workspace</strong>
             <small>Farm operations</small>

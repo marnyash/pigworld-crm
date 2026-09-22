@@ -20,7 +20,7 @@ export function Login({ auth, setAuth, onSubmit, notice }) {
       </div>
       <form className="login-card" onSubmit={onSubmit}>
         <div className="brand-block">
-          <div className="brand-mark">P</div>
+          <img className="brand-logo" src="./pig-world-logo.jpeg" alt="Pig World Smart Farm" />
           <div>
             <strong>Pig World</strong>
             <span>Customer desk</span>

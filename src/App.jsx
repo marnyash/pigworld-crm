@@ -907,6 +907,32 @@ function App() {
   }, [auth.token, farmId, canReadCommunication]);
 
   useEffect(() => {
+    if (!auth.token || !farmId) return undefined;
+    const refreshData = () => {
+      loadCustomers();
+      loadDashboard();
+      loadStaff();
+      loadCrmMessages();
+      loadDirectory();
+      loadSettingsData();
+      if (activeView.startsWith("orders-")) {
+        loadOrders(activeView.replace("orders-", ""));
+      }
+    };
+    const interval = window.setInterval(refreshData, 5 * 60 * 1000);
+    const refreshOnFocus = () => {
+      if (document.visibilityState === "visible") refreshData();
+    };
+    document.addEventListener("visibilitychange", refreshOnFocus);
+    window.addEventListener("focus", refreshData);
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", refreshOnFocus);
+      window.removeEventListener("focus", refreshData);
+    };
+  }, [auth.token, farmId, activeView, canReadCommunication]);
+
+  useEffect(() => {
     if (!auth.token || !activeView.startsWith("orders-")) return;
     loadOrders(activeView.replace("orders-", ""));
   }, [auth.token, activeView]);

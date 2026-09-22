@@ -23,8 +23,12 @@
 .home-shell .home-footer-grid{width:100%;grid-template-columns:repeat(12,minmax(0,1fr));gap:18px}
 .home-shell .home-footer-grid .home-panel:first-child{grid-column:span 7}
 .home-shell .home-footer-grid .home-actions{grid-column:span 5}
+.customer-row{grid-template-columns:34px minmax(170px,1fr) minmax(280px,1.4fr) auto 13px}
+.customer-row-meta{display:grid;grid-template-columns:repeat(3,minmax(70px,1fr));gap:4px 12px;min-width:0}
+.customer-row-meta small{overflow:hidden;color:var(--muted);font-size:10px;text-overflow:ellipsis;white-space:nowrap}
 @media(max-width:1100px){.home-shell .home-kpis{grid-template-columns:repeat(3,minmax(0,1fr))}.home-shell .home-content-grid .home-panel,.home-shell .home-footer-grid .home-panel{grid-column:span 6}}
-@media(max-width:700px){.home-shell .main-panel{padding:24px 16px 40px}.home-shell .home-intro{min-height:0;padding:25px 22px}.home-shell .home-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.home-shell .home-content-grid,.home-shell .home-footer-grid{grid-template-columns:1fr}.home-shell .home-content-grid .home-panel,.home-shell .home-footer-grid .home-panel{grid-column:1}.home-shell .home-pipeline{grid-template-columns:repeat(5,minmax(68px,1fr));overflow-x:auto}}
+@media(max-width:900px){.customer-row{grid-template-columns:34px minmax(140px,1fr) minmax(190px,1fr) auto 13px}.customer-row-meta{grid-template-columns:repeat(2,minmax(70px,1fr))}}
+@media(max-width:700px){.home-shell .main-panel{padding:24px 16px 40px}.home-shell .home-intro{min-height:0;padding:25px 22px}.home-shell .home-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.home-shell .home-content-grid,.home-shell .home-footer-grid{grid-template-columns:1fr}.home-shell .home-content-grid .home-panel,.home-shell .home-footer-grid .home-panel{grid-column:1}.home-shell .home-pipeline{grid-template-columns:repeat(5,minmax(68px,1fr));overflow-x:auto}.customer-row{grid-template-columns:34px minmax(0,1fr) auto 13px}.customer-row-meta{grid-column:2 / -1;grid-template-columns:repeat(2,minmax(0,1fr));padding-top:4px}}
 .home-dashboard{gap:24px}
 .home-intro{position:relative;overflow:hidden;min-height:190px;padding:32px 36px;border:0;background:linear-gradient(120deg,#173e2c 0%,#286846 62%,#4f8050 100%);color:#f7fbf2;box-shadow:0 18px 40px rgba(23,62,44,.14)}
 .home-intro::after{content:"";position:absolute;right:-80px;bottom:-120px;width:300px;height:300px;border:1px solid rgba(216,236,184,.28);border-radius:50%;box-shadow:0 0 0 28px rgba(216,236,184,.06),0 0 0 56px rgba(216,236,184,.04)}

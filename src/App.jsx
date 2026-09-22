@@ -1198,6 +1198,13 @@ function App() {
                           "No company details"}
                       </small>
                     </span>
+                    <span className="customer-row-meta">
+                      <small>{customer.email || "No email"}</small>
+                      <small>{customer.phone || "No phone"}</small>
+                      <small>{customer.type || "contact"}</small>
+                      <small>{customer.assignee?.name || "Unassigned"}</small>
+                      <small>{customer.open_tasks_count || 0} open tasks</small>
+                    </span>
                     <span className={`status-label ${customer.status}`}>
                       {customer.status}
                     </span>

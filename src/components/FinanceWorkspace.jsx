@@ -1,5 +1,3 @@
-import { FinanceDashboard } from "./FinanceDashboard";
-
 function SubscriptionRows({ subscriptions }) {
   if (subscriptions.length === 0) return <div className="state-message">No farm subscription records are available yet.</div>;
   return <div className="finance-record-list">{subscriptions.map((farm) => <article className="finance-record-row" key={farm.id}><div><strong>{farm.name}</strong><span>{farm.mother_pig_count ?? 0} mother pigs</span></div><span>{farm.subscription_plan || "No plan"}</span><span>{farm.payment_amount ? `${farm.payment_amount} ${farm.payment_currency}` : "No payment"}</span><span className={`payment-status ${farm.payment_status === "paid" ? "paid" : "pending"}`}>{farm.payment_status || "pending"}</span></article>)}</div>;
@@ -15,9 +13,5 @@ function ReportingView({ report }) {
 }
 
 export function FinanceWorkspace({ view, customers, counts, report, calculator, setCalculator, projectedRevenue, plans, planForm, setPlanForm, savePlan, togglePlan, canManagePlans, statuses }) {
-  if (view === "finance-subscriptions") return <section className="panel-card finance-workspace-panel"><div className="panel-heading"><div><div className="eyebrow">Farm subscriptions</div><h2>Subscription status</h2></div><span>{report?.subscriptions?.length || 0} farms</span></div><SubscriptionRows subscriptions={report?.subscriptions || []} /></section>;
-  if (view === "finance-payments") return <section className="panel-card finance-workspace-panel"><div className="panel-heading"><div><div className="eyebrow">Payment activity</div><h2>Latest payment activity</h2></div><span>Latest payment per farm</span></div><SubscriptionRows subscriptions={report?.subscriptions || []} /><p className="finance-disclaimer">Payment activity currently shows the latest payment returned by the finance report API. A full transaction history requires a dedicated payment-history endpoint.</p></section>;
-  if (view === "finance-plans") return <PlansView plans={plans} planForm={planForm} setPlanForm={setPlanForm} savePlan={savePlan} togglePlan={togglePlan} canManagePlans={canManagePlans} />;
-  if (view === "finance-reporting") return <ReportingView report={report} />;
-  return <FinanceDashboard customers={customers} counts={counts} report={report} calculator={calculator} setCalculator={setCalculator} projectedRevenue={projectedRevenue} plans={plans} planForm={planForm} setPlanForm={setPlanForm} savePlan={savePlan} togglePlan={togglePlan} canManagePlans={canManagePlans} statuses={statuses} />;
+  return <ReportingView report={report} />;
 }

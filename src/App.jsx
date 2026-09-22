@@ -152,7 +152,7 @@ function App() {
     setActiveSection(section);
     if (section === "customers") setActiveView("customers");
     if (section === "staff") setActiveView("staff-list");
-    if (section === "finance") setActiveView("finance-overview");
+    if (section === "finance") setActiveView("finance-reporting");
     if (section === "communication") setActiveView("communication-inbox");
     if (section === "settings") setActiveView("settings-profile");
   };
@@ -384,8 +384,10 @@ function App() {
     try {
       setLoading(true);
       const params = {
+        ...(farmId ? { farm_id: farmId } : {}),
         ...(filters.search ? { search: filters.search } : {}),
         ...(filters.status !== "all" ? { status: filters.status } : {}),
+        _refresh: Date.now(),
       };
       const response = await api.get("/crm/customers", { params });
       const data = response.data?.data || [];
@@ -409,13 +411,10 @@ function App() {
     if (!auth.token) return undefined;
     const timer = window.setTimeout(() => loadCustomers(), 300);
     return () => window.clearTimeout(timer);
-  }, [auth.token, filters.search, filters.status]);
+  }, [auth.token, farmId, filters.search, filters.status]);
   useEffect(() => {
     if (!auth.token || !isAdmin && crmRole !== "finance") return undefined;
-    api
-      .get("/crm/reports/overview", { params: farmId ? { farm_id: farmId } : {} })
-      .then((response) => setReport(response.data?.data || null))
-      .catch(() => showNotice("Unable to load finance overview.", "error"));
+    loadReport();
     return undefined;
   }, [auth.token, farmId, isAdmin, crmRole]);
   useEffect(() => {
@@ -771,6 +770,17 @@ function App() {
       setDashboardLoading(false);
     }
   };
+  const loadReport = async () => {
+    if (!auth.token || !farmId || !isAdmin && crmRole !== "finance") return;
+    try {
+      const response = await api.get("/crm/reports/overview", {
+        params: { farm_id: farmId, _refresh: Date.now() },
+      });
+      setReport(response.data?.data || null);
+    } catch (error) {
+      showNotice(error.response?.data?.message || "Unable to load revenue reporting.", "error");
+    }
+  };
   const loadDirectory = async () => {
     if (!auth.token) return;
     try {
@@ -903,6 +913,7 @@ function App() {
       loadDashboard();
       loadDirectory();
       loadSettingsData();
+      loadReport();
     }
   }, [auth.token, farmId, canReadCommunication]);
 

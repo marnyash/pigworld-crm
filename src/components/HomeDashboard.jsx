@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 export function HomeDashboard({ dashboard, loading, error, onRefresh, onOpen, onOpenStatus }) {
   const [metric, setMetric] = useState("growth");
   const [chartType, setChartType] = useState("pie");
   const [showChartMenu, setShowChartMenu] = useState(false);
+  const [heroSlide, setHeroSlide] = useState(0);
   if (loading && !dashboard) {
     return <section className="home-dashboard-state panel-card"><div className="eyebrow">Workspace at a glance</div><h2>Loading dashboard</h2><p>Fetching current farm metrics and work queues.</p></section>;
   }
@@ -14,6 +15,7 @@ export function HomeDashboard({ dashboard, loading, error, onRefresh, onOpen, on
     return <section className="home-dashboard-state panel-card"><div className="eyebrow">No farm selected</div><h2>Choose a farm to continue</h2><p>Home metrics will appear when your account is linked to a farm.</p></section>;
   }
   const customers = dashboard.customers || {};
+  const alerts = dashboard.alerts || {};
   const statuses = customers.by_status || {};
   const growth = customers.growth || [];
   const activeChart = metric === "growth"
@@ -27,13 +29,25 @@ export function HomeDashboard({ dashboard, loading, error, onRefresh, onOpen, on
     pieOffset += pieTotal ? (item.value / pieTotal) * 360 : 0;
     return `${["#286846", "#5b9c98", "#7197d1", "#cf8a43", "#bf5f63", "#8a6ca8"][index % 6]} ${start}deg ${pieOffset}deg`;
   }).join(", ");
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
+  const refreshedAt = dashboard.generated_at ? new Date(dashboard.generated_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "Not available";
+  const alertItems = [
+    { label: "Overdue tasks", value: dashboard.tasks?.overdue || 0, action: () => onOpen("tasks"), tone: "urgent" },
+    { label: "New messages", value: alerts.new_messages || 0, action: () => onOpen("communication"), tone: "message" },
+    { label: "Pending payments", value: alerts.pending_payments || 0, action: () => onOpen("finance"), tone: "payment" },
+    { label: "New orders", value: alerts.new_orders || 0, action: () => onOpen("customers"), tone: "order" },
+  ];
+  useEffect(() => {
+    const timer = window.setInterval(() => setHeroSlide((current) => (current + 1) % 2), 5000);
+    return () => window.clearInterval(timer);
+  }, []);
   return (
     <section className="home-dashboard">
       <div className="home-intro">
-        <div>
-          <div className="eyebrow">Workspace at a glance</div>
-          <h2>Good to see you.</h2>
-          <p>Current CRM performance and follow-up work for this farm.</p>
+        <div className="home-intro-content">
+          {heroSlide === 0 ? <div className="home-hero-slide" key="greeting"><div className="eyebrow">Workspace at a glance</div><h2>{greeting}</h2><p>Current CRM performance and follow-up work for this farm.</p></div> : <div className="home-hero-slide" key="status"><div className="eyebrow">Today at a glance</div><h2>{new Date().toLocaleDateString([], { weekday: "long", month: "short", day: "numeric" })}</h2><p>Last data refresh: {refreshedAt}</p><div className="home-alerts">{alertItems.map((alert) => <button className={`home-alert ${alert.tone}`} type="button" key={alert.label} onClick={alert.action}><strong>{alert.value}</strong><span>{alert.label}</span></button>)}</div></div>}
+          <div className="home-hero-dots" aria-label="Home summary slides"><button type="button" className={heroSlide === 0 ? "active" : ""} aria-label="Show greeting" onClick={() => setHeroSlide(0)} /><button type="button" className={heroSlide === 1 ? "active" : ""} aria-label="Show daily summary" onClick={() => setHeroSlide(1)} /></div>
         </div>
         <button className="primary-button" type="button" onClick={onRefresh}>Refresh dashboard</button>
       </div>

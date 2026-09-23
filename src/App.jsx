@@ -93,6 +93,7 @@ function App() {
   const [notice, setNotice] = useState(null);
   const [farmId, setFarmId] = useState("");
   const [staff, setStaff] = useState([]);
+  const [staffCategories, setStaffCategories] = useState([]);
   const [staffGroups, setStaffGroups] = useState({ directory: true });
   const [policies, setPolicies] = useState([]);
   const [policyForm, setPolicyForm] = useState({ title: "", audience: "all", effectiveDate: "", summary: "" });
@@ -698,6 +699,35 @@ function App() {
       );
     }
   };
+  const loadStaffCategories = async () => {
+    if (!auth.token || !farmId) return;
+    try {
+      const response = await api.get("/crm/staff-categories", { params: { farm_id: farmId, _refresh: Date.now() } });
+      setStaffCategories(response.data?.data || []);
+    } catch (error) {
+      showNotice(error.response?.data?.message || "Unable to load staff categories.", "error");
+    }
+  };
+  const addStaffCategory = async (event, category) => {
+    event.preventDefault();
+    try {
+      const response = await api.post("/crm/staff-categories", { farm_id: Number(farmId), ...category });
+      setStaffCategories((current) => [...current, response.data.data].sort((left, right) => left.name.localeCompare(right.name)));
+      showNotice("Staff category created.", "success");
+    } catch (error) {
+      showNotice(error.response?.data?.message || "Could not create staff category.", "error");
+    }
+  };
+  const deleteStaffCategory = async (category) => {
+    if (!window.confirm(`Delete the ${category.name} category?`)) return;
+    try {
+      await api.delete(`/crm/staff-categories/${category.id}`);
+      setStaffCategories((current) => current.filter((item) => item.id !== category.id));
+      showNotice("Staff category deleted.", "success");
+    } catch (error) {
+      showNotice(error.response?.data?.message || "Could not delete staff category.", "error");
+    }
+  };
   const loadGlobalTasks = async () => {
     if (!auth.token || !farmId) return;
     try {
@@ -882,7 +912,7 @@ function App() {
       return loadCustomers();
     }
     if (activeSection === "tasks") return loadGlobalTasks();
-    if (activeSection === "staff") return loadStaff();
+    if (activeSection === "staff") return Promise.all([loadStaff(), loadStaffCategories()]);
     if (activeSection === "communication") return loadCrmMessages();
     if (activeSection === "settings") return activeView === "settings-notifications" ? loadFarmNotifications() : loadSettingsData();
     if (activeSection === "finance") return Promise.all([loadReport(), loadPlans()]);
@@ -990,6 +1020,7 @@ function App() {
   useEffect(() => {
     if (auth.token) {
       loadStaff();
+      loadStaffCategories();
       loadCrmMessages();
       loadDashboard();
       loadDirectory();
@@ -1011,6 +1042,7 @@ function App() {
       loadCustomers();
       loadDashboard();
       loadStaff();
+      loadStaffCategories();
       loadGlobalTasks();
       loadCrmMessages();
       loadDirectory();
@@ -1065,7 +1097,7 @@ function App() {
             setCustomerGroups={setCustomerGroups}
           />
         )}
-        {activeSection === "staff" && <StaffSidebar activeView={activeView} setActiveView={setActiveView} groups={staffGroups} setGroups={setStaffGroups} />}
+        {activeSection === "staff" && <StaffSidebar activeView={activeView} setActiveView={setActiveView} groups={staffGroups} setGroups={setStaffGroups} categories={staffCategories} isAdmin={isAdmin} />}
         {activeSection === "finance" && <FinanceSidebar activeView={activeView} setActiveView={setActiveView} />}
         {activeSection === "communication" && <CommunicationSidebar activeView={activeView} setActiveView={setActiveView} />}
         {activeSection === "settings" && <SettingsSidebar activeView={activeView} setActiveView={setActiveView} />}
@@ -1154,7 +1186,7 @@ function App() {
         {activeSection === "customers" && ["farm-owners", "farm-managers", "farm-workers", "relationships"].includes(activeView) && <DirectoryView view={activeView} directory={directory} loading={directoryLoading} error={directoryError} onRefresh={loadDirectory} />}
         {activeSection === "customers" && activeView.startsWith("orders-") && <OrdersView status={activeView.replace("orders-", "")} orders={orders} loading={ordersLoading} error={ordersError} onRefresh={() => loadOrders(activeView.replace("orders-", ""))} />}
         {activeSection === "communication" && <CommunicationWorkspace view={activeView} messages={crmMessages} staff={staff} notification={notification} setNotification={setNotification} onSubmit={sendNotification} onRefresh={loadCrmMessages} onReply={(message) => { setNotification((current) => ({ ...current, recipient_id: message.sender_id, message: `Hi ${message.sender_name || "there"}, ` })); setActiveView("communication-broadcast"); }} selected={selected} interactions={interactions} templates={communicationTemplates} onUseTemplate={addQuickAutomation} canNotify={canNotify} canReply={canReply} canRead={canReadCommunication} />}
-        {activeSection === "staff" && <StaffWorkspace view={activeView} members={staff} dashboard={dashboard} policies={policies} policyForm={policyForm} setPolicyForm={setPolicyForm} onCreatePolicy={createPolicy} logs={staffLogs} onUpdate={updateStaff} onDelete={deleteStaff} isAdmin={isAdmin} memberForm={memberForm} setMemberForm={setMemberForm} onAdd={addStaff} />}
+        {activeSection === "staff" && <StaffWorkspace view={activeView} members={staff} dashboard={dashboard} categories={staffCategories} policies={policies} policyForm={policyForm} setPolicyForm={setPolicyForm} onCreatePolicy={createPolicy} logs={staffLogs} onUpdate={updateStaff} onDelete={deleteStaff} isAdmin={isAdmin} memberForm={memberForm} setMemberForm={setMemberForm} onAdd={addStaff} onAddCategory={addStaffCategory} onDeleteCategory={deleteStaffCategory} />}
         {activeSection === "settings" && <SettingsWorkspace view={activeView} user={profile} profileForm={profileForm} setProfileForm={setProfileForm} onSaveProfile={saveProfileSettings} onAvatarChange={updateProfileAvatar} profileAvatar={profileAvatar} onLogout={logout} passwordForm={passwordForm} setPasswordForm={setPasswordForm} onChangePassword={changePassword} farm={settingsFarm} farmName={farmName} setFarmName={setFarmName} onSaveFarm={saveFarmSettings} canEditFarm={Boolean(settingsFarm)} members={farmMembers} canManageMembers={isAdmin || profile?.role === "farmOwner"} memberPermissions={memberPermissions} setMemberPermissions={setMemberPermissions} onSaveMember={saveMemberPermissions} notifications={farmNotifications} onRefreshNotifications={loadFarmNotifications} onReadNotification={markFarmNotificationRead} />}
         {activeSection === "finance" && (
           <FinanceWorkspace

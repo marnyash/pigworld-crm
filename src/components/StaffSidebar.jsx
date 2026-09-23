@@ -4,7 +4,7 @@ const staffLinks = [
   { id: "staff-support", label: "Customer service" },
 ];
 
-export function StaffSidebar({ activeView, setActiveView, groups, setGroups }) {
+export function StaffSidebar({ activeView, setActiveView, groups, setGroups, categories = [], isAdmin }) {
   return (
     <nav className="side-nav staff-side-nav" aria-label="Staff navigation">
       <button
@@ -29,8 +29,10 @@ export function StaffSidebar({ activeView, setActiveView, groups, setGroups }) {
               <span>•</span> {link.label}
             </button>
           ))}
+          {categories.map((category) => <button key={category.id} className={`nav-item ${activeView === `staff-category-${category.id}` ? "active" : ""}`} type="button" onClick={() => setActiveView(`staff-category-${category.id}`)}><span style={{ color: category.color }}>{category.icon || "•"}</span> {category.name}</button>)}
         </div>
       )}
+      {isAdmin && <button className={`nav-item standalone-nav-item ${activeView === "staff-categories" ? "active" : ""}`} type="button" onClick={() => setActiveView("staff-categories")}><span>＋</span> Manage categories</button>}
       <button
         className={`nav-item standalone-nav-item ${activeView === "policy-new" ? "active" : ""}`}
         type="button"

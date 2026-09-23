@@ -84,6 +84,7 @@ function App() {
   const [filters, setFilters] = useState({ search: "", status: "all", type: "all", assigned_to: "all", sort_by: "latest", sort_direction: "desc", page: 1 });
   const [customerMeta, setCustomerMeta] = useState({ current_page: 1, last_page: 1, per_page: 25, total: 0 });
   const [customerViewMode, setCustomerViewMode] = useState(() => localStorage.getItem("pigyworld_crm_customer_view") || "table");
+  const [customerListMaximized, setCustomerListMaximized] = useState(false);
   const [form, setForm] = useState(emptyCustomer);
   const [interaction, setInteraction] = useState({ type: "message", notes: "" });
   const [editing, setEditing] = useState(false);
@@ -1265,14 +1266,14 @@ function App() {
             </strong>
           </div>
         </section>}
-        {activeSection === "customers" && activeView === "customers" && <section className="workspace-grid">
-          <div className="list-panel panel-card">
+        {activeSection === "customers" && activeView === "customers" && <section className={`workspace-grid ${customerListMaximized ? "customer-list-maximized" : ""}`}>
+          <div className="list-panel panel-card customer-list-panel">
             <div className="panel-heading">
               <div>
                 <h2>Customer list</h2>
                 <span>{customerMeta.total} records in view</span>
               </div>
-              <div className="customer-list-actions"><div className="customer-view-toggle" role="group" aria-label="Customer list view"><button className={customerViewMode === "table" ? "selected" : ""} type="button" onClick={() => { setCustomerViewMode("table"); localStorage.setItem("pigyworld_crm_customer_view", "table"); }}>Table</button><button className={customerViewMode === "cards" ? "selected" : ""} type="button" onClick={() => { setCustomerViewMode("cards"); localStorage.setItem("pigyworld_crm_customer_view", "cards"); }}>Cards</button></div><button className="filter-button" type="button" onClick={() => setFilters((current) => ({ ...current, search: "", status: "all", type: "all", assigned_to: "all", page: 1 }))}>Clear filters</button></div>
+              <div className="customer-list-actions"><div className="customer-view-toggle" role="group" aria-label="Customer list view"><button className={customerViewMode === "table" ? "selected" : ""} type="button" onClick={() => { setCustomerViewMode("table"); localStorage.setItem("pigyworld_crm_customer_view", "table"); }}>Table</button><button className={customerViewMode === "cards" ? "selected" : ""} type="button" onClick={() => { setCustomerViewMode("cards"); localStorage.setItem("pigyworld_crm_customer_view", "cards"); }}>Cards</button></div><button className="filter-button" type="button" onClick={() => setCustomerListMaximized((current) => !current)}>{customerListMaximized ? "↙ Restore" : "↗ Maximize"}</button><button className="filter-button" type="button" onClick={() => setFilters((current) => ({ ...current, search: "", status: "all", type: "all", assigned_to: "all", page: 1 }))}>Clear filters</button></div>
             </div>
             <label className="search-field" htmlFor="customer-search">
               <span>⌕</span>

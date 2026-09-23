@@ -419,9 +419,7 @@ function App() {
   }, [auth.token, farmId, isAdmin, crmRole]);
   useEffect(() => {
     if (!auth.token || !isAdmin && crmRole !== "finance") return undefined;
-    api.get("/subscription-plans")
-      .then((response) => setPlans(response.data?.data || []))
-      .catch(() => showNotice("Unable to load subscription plans.", "error"));
+    loadPlans();
     return undefined;
   }, [auth.token, isAdmin, crmRole]);
   useEffect(() => {
@@ -781,6 +779,15 @@ function App() {
       showNotice(error.response?.data?.message || "Unable to load revenue reporting.", "error");
     }
   };
+  const loadPlans = async () => {
+    if (!auth.token || !isAdmin && crmRole !== "finance") return;
+    try {
+      const response = await api.get("/subscription-plans", { params: { _refresh: Date.now() } });
+      setPlans(response.data?.data || []);
+    } catch (error) {
+      showNotice(error.response?.data?.message || "Unable to load subscription plans.", "error");
+    }
+  };
   const loadDirectory = async () => {
     if (!auth.token) return;
     try {
@@ -806,6 +813,15 @@ function App() {
     } finally {
       setOrdersLoading(false);
     }
+  };
+  const refreshCurrentView = () => {
+    if (activeSection === "home") return loadDashboard();
+    if (activeSection === "customers") return activeView.startsWith("orders-") ? loadOrders(activeView.replace("orders-", "")) : loadCustomers();
+    if (activeSection === "staff") return loadStaff();
+    if (activeSection === "communication") return loadCrmMessages();
+    if (activeSection === "settings") return activeView === "settings-notifications" ? loadFarmNotifications() : loadSettingsData();
+    if (activeSection === "finance") return Promise.all([loadReport(), loadPlans()]);
+    return undefined;
   };
   const updateStaff = async (member, data) => {
     try {
@@ -1046,8 +1062,11 @@ function App() {
             </h1>
           </div>
           <div className="top-actions">
-            {activeSection === "customers" && <button className="ghost-button" onClick={loadCustomers}>
+            {activeSection === "customers" && <button className="ghost-button" type="button" onClick={loadCustomers}>
               ↻ Refresh
+            </button>}
+            {activeSection === "finance" && <button className="ghost-button" type="button" onClick={refreshCurrentView}>
+              ↻ Refresh finance
             </button>}
             {activeSection === "customers" && canWriteCustomers && <button
               className="primary-button"

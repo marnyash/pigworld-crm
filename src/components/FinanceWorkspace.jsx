@@ -12,8 +12,28 @@ function ReportingView({ report }) {
   return <section className="panel-card finance-workspace-panel"><div className="panel-heading"><div><div className="eyebrow">Revenue reporting</div><h2>Financial performance</h2></div><span>{report?.generated_at ? new Date(report.generated_at).toLocaleDateString() : "No report date"}</span></div><div className="finance-report-grid"><div><span>Active relationships</span><strong>{report?.active_relationships ?? 0}</strong><small>CRM relationships excluding lost records</small></div><div><span>Qualified pipeline</span><strong>{report?.qualified ?? 0}</strong><small>Relationships ready for follow-up</small></div><div><span>Conversion rate</span><strong>{report?.conversion_rate ?? 0}%</strong><small>Won relationships in the report</small></div></div><div className="finance-report-status"><strong>Pipeline status counts</strong>{Object.entries(status).map(([key, value]) => <span key={key}>{key}: {value}</span>)}</div><p className="finance-disclaimer">This report combines CRM pipeline indicators with subscription data. It does not represent a complete transaction ledger.</p></section>;
 }
 
+function FinancialGraph({ report }) {
+  const metrics = [
+    { label: "Customers", value: Number(report?.total_customers || 0), color: "#286846" },
+    { label: "Active", value: Number(report?.active_relationships || 0), color: "#5b9c98" },
+    { label: "Revenue", value: Number(report?.revenue_collected || 0), color: "#cf8a43" },
+  ];
+  const maxValue = Math.max(...metrics.map((metric) => metric.value), 1);
+
+  return <section className="panel-card finance-graph-panel" aria-label="Farm financial graph">
+    <div className="panel-heading"><div><div className="eyebrow">Financial trend</div><h2>Farm performance</h2></div><span>Current report</span></div>
+    <div className="finance-graph" role="img" aria-label="Bar graph comparing customers, active relationships, and collected revenue">
+      {metrics.map((metric) => <div className="finance-graph-column" key={metric.label}>
+        <strong>{metric.value.toLocaleString()}</strong>
+        <div className="finance-graph-track"><i style={{ height: `${Math.max((metric.value / maxValue) * 100, 5)}%`, background: metric.color }} /></div>
+        <span>{metric.label}</span>
+      </div>)}
+    </div>
+  </section>;
+}
+
 function OverviewView({ report, calculator, setCalculator, projectedRevenue }) {
-  return <section className="panel-card finance-workspace-panel"><div className="panel-heading"><div><div className="eyebrow">Finance overview</div><h2>Farm financial snapshot</h2></div><span>{report?.generated_at ? new Date(report.generated_at).toLocaleDateString() : "No report date"}</span></div><div className="finance-kpis"><div className="finance-kpi"><span>Customers</span><strong>{report?.total_customers ?? 0}</strong><small>Total relationships</small></div><div className="finance-kpi finance-kpi-accent"><span>Active relationships</span><strong>{report?.active_relationships ?? 0}</strong><small>Excluding lost records</small></div><div className="finance-kpi"><span>Collected revenue</span><strong>{report?.revenue_collected ?? 0}</strong><small>Paid transactions</small></div></div><div className="calculator-card"><div className="eyebrow">Revenue planner</div><h2>Project monthly revenue</h2><p>Estimate revenue using your current customer volume and expected monthly value.</p><div className="finance-plan-form"><input type="number" min="0" value={calculator.customers} onChange={(event) => setCalculator((current) => ({ ...current, customers: event.target.value }))} placeholder="Customers" /><input type="number" min="0" step="0.01" value={calculator.amount} onChange={(event) => setCalculator((current) => ({ ...current, amount: event.target.value }))} placeholder="Monthly value" /></div><div className="calculator-total"><span>Projected monthly revenue</span><strong>{projectedRevenue}</strong></div></div></section>;
+  return <section className="finance-overview-layout"><FinancialGraph report={report} /><section className="panel-card finance-workspace-panel finance-snapshot-panel"><div className="panel-heading"><div><div className="eyebrow">Finance overview</div><h2>Farm financial snapshot</h2></div><span>{report?.generated_at ? new Date(report.generated_at).toLocaleDateString() : "No report date"}</span></div><div className="finance-kpis"><div className="finance-kpi"><span>Customers</span><strong>{report?.total_customers ?? 0}</strong><small>Total relationships</small></div><div className="finance-kpi finance-kpi-accent"><span>Active relationships</span><strong>{report?.active_relationships ?? 0}</strong><small>Excluding lost records</small></div><div className="finance-kpi"><span>Collected revenue</span><strong>{report?.revenue_collected ?? 0}</strong><small>Paid transactions</small></div></div><div className="calculator-card"><div className="eyebrow">Revenue planner</div><h2>Project monthly revenue</h2><p>Estimate revenue using your current customer volume and expected monthly value.</p><div className="finance-plan-form"><input type="number" min="0" value={calculator.customers} onChange={(event) => setCalculator((current) => ({ ...current, customers: event.target.value }))} placeholder="Customers" /><input type="number" min="0" step="0.01" value={calculator.amount} onChange={(event) => setCalculator((current) => ({ ...current, amount: event.target.value }))} placeholder="Monthly value" /></div><div className="calculator-total"><span>Projected monthly revenue</span><strong>{projectedRevenue}</strong></div></div></section></section>;
 }
 
 function PaymentsView({ report }) {

@@ -32,6 +32,7 @@ const emptyCustomer = {
   status: "new",
   notes: "",
 };
+const PROFILE_AVATAR_KEY = "pigyworld_crm_profile_avatar";
 const statuses = ["all", "new", "contacted", "qualified", "won", "lost"];
 const interactionTypes = ["message", "call", "email", "visit", "meeting", "note"];
 const defaultAdminAccounts = {
@@ -95,6 +96,7 @@ function App() {
   const [staffLogs, setStaffLogs] = useState([]);
   const [crmMessages, setCrmMessages] = useState([]);
   const [profile, setProfile] = useState(null);
+  const [profileAvatar, setProfileAvatar] = useState(() => localStorage.getItem(PROFILE_AVATAR_KEY) || "");
   const [profileForm, setProfileForm] = useState({ name: "" });
   const [passwordForm, setPasswordForm] = useState({ current_password: "", new_password: "", new_password_confirmation: "" });
   const [settingsFarm, setSettingsFarm] = useState(null);
@@ -251,6 +253,17 @@ function App() {
       setAuth((current) => ({ ...current, token: "", role: "" }));
       setFarmId("");
     }
+  };
+  const updateProfileAvatar = (file) => {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const avatar = String(reader.result || "");
+      localStorage.setItem(PROFILE_AVATAR_KEY, avatar);
+      setProfileAvatar(avatar);
+      showNotice("Profile picture updated.", "success");
+    };
+    reader.readAsDataURL(file);
   };
   useEffect(() => {
     if (!auth.token) return undefined;
@@ -1047,17 +1060,18 @@ function App() {
         {activeSection === "communication" && <CommunicationSidebar activeView={activeView} setActiveView={setActiveView} />}
         {activeSection === "settings" && <SettingsSidebar activeView={activeView} setActiveView={setActiveView} />}
         <div className="sidebar-footer">
-          <img className="workspace-logo" src="./pig-world-logo.jpeg" alt="Pig World Smart Farm" />
+          {profileAvatar ? <img className="profile-avatar-image" src={profileAvatar} alt={`${profile?.name || "User"} profile`} /> : <span className="profile-avatar-fallback">{(profile?.name || auth.email || "U").slice(0, 1).toUpperCase()}</span>}
           <div>
-            <strong>Workspace</strong>
-            <small>Farm operations</small>
+            <strong>{profile?.name || auth.email || "CRM user"}</strong>
+            <small>{settingsFarm?.name || "Farm operations"}</small>
           </div>
           <button
-            className="icon-button"
+            className="sidebar-logout-button"
+            type="button"
             title="Sign out"
             onClick={logout}
           >
-            Logout
+            <span aria-hidden="true">↪</span> Logout
           </button>
         </div>
       </aside>}
@@ -1144,7 +1158,7 @@ function App() {
           {staff.filter((member) => member.crm_role !== "admin").map((member) => <div className="staff-row" key={member.id}><strong>{member.name}</strong><span>{member.email}</span><select value={member.crm_role || ""} onChange={(event) => updateStaff(member, { crm_role: event.target.value })}><option value="finance">Finance</option><option value="customer_support">Customer support</option></select><button className="filter-button" onClick={() => updateStaff(member, { closed: !member.crm_closed_at })}>{member.crm_closed_at ? "Unsuspend" : "Suspend"}</button><button className="danger-button" onClick={() => deleteStaff(member)}>Delete</button></div>)}
         </section>}
         {activeSection === "staff" && <StaffWorkspace view={activeView} members={staff} policies={policies} policyForm={policyForm} setPolicyForm={setPolicyForm} onCreatePolicy={createPolicy} logs={staffLogs} onUpdate={updateStaff} onDelete={deleteStaff} isAdmin={isAdmin} />}
-        {activeSection === "settings" && <SettingsWorkspace view={activeView} user={profile} profileForm={profileForm} setProfileForm={setProfileForm} onSaveProfile={saveProfileSettings} passwordForm={passwordForm} setPasswordForm={setPasswordForm} onChangePassword={changePassword} farm={settingsFarm} farmName={farmName} setFarmName={setFarmName} onSaveFarm={saveFarmSettings} canEditFarm={Boolean(settingsFarm)} members={farmMembers} canManageMembers={isAdmin || profile?.role === "farmOwner"} memberPermissions={memberPermissions} setMemberPermissions={setMemberPermissions} onSaveMember={saveMemberPermissions} notifications={farmNotifications} onRefreshNotifications={loadFarmNotifications} onReadNotification={markFarmNotificationRead} />}
+        {activeSection === "settings" && <SettingsWorkspace view={activeView} user={profile} profileForm={profileForm} setProfileForm={setProfileForm} onSaveProfile={saveProfileSettings} onAvatarChange={updateProfileAvatar} profileAvatar={profileAvatar} passwordForm={passwordForm} setPasswordForm={setPasswordForm} onChangePassword={changePassword} farm={settingsFarm} farmName={farmName} setFarmName={setFarmName} onSaveFarm={saveFarmSettings} canEditFarm={Boolean(settingsFarm)} members={farmMembers} canManageMembers={isAdmin || profile?.role === "farmOwner"} memberPermissions={memberPermissions} setMemberPermissions={setMemberPermissions} onSaveMember={saveMemberPermissions} notifications={farmNotifications} onRefreshNotifications={loadFarmNotifications} onReadNotification={markFarmNotificationRead} />}
         {activeSection === "finance" && (
           <FinanceWorkspace
             view={activeView}

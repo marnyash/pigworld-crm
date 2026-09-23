@@ -1075,14 +1075,6 @@ function App() {
             <strong>{profile?.name || auth.email || "CRM user"}</strong>
             <small>{settingsFarm?.name || "Farm operations"}</small>
           </div>
-          <button
-            className="sidebar-logout-button"
-            type="button"
-            title="Sign out"
-            onClick={logout}
-          >
-            <span aria-hidden="true">↪</span> Logout
-          </button>
         </div>
       </aside>}
       <main className="main-panel">
@@ -1162,13 +1154,8 @@ function App() {
         {activeSection === "customers" && ["farm-owners", "farm-managers", "farm-workers", "relationships"].includes(activeView) && <DirectoryView view={activeView} directory={directory} loading={directoryLoading} error={directoryError} onRefresh={loadDirectory} />}
         {activeSection === "customers" && activeView.startsWith("orders-") && <OrdersView status={activeView.replace("orders-", "")} orders={orders} loading={ordersLoading} error={ordersError} onRefresh={() => loadOrders(activeView.replace("orders-", ""))} />}
         {activeSection === "communication" && <CommunicationWorkspace view={activeView} messages={crmMessages} staff={staff} notification={notification} setNotification={setNotification} onSubmit={sendNotification} onRefresh={loadCrmMessages} onReply={(message) => { setNotification((current) => ({ ...current, recipient_id: message.sender_id, message: `Hi ${message.sender_name || "there"}, ` })); setActiveView("communication-broadcast"); }} selected={selected} interactions={interactions} templates={communicationTemplates} onUseTemplate={addQuickAutomation} canNotify={canNotify} canReply={canReply} canRead={canReadCommunication} />}
-        {isAdmin && activeSection === "staff" && <section className="panel-card crm-tools">
-          <div className="panel-heading"><div><div className="eyebrow">Administration</div><h2>CRM access</h2></div><span>Add, close, reassign, or delete accounts</span></div>
-          <form className="staff-row" onSubmit={addStaff}><input required value={memberForm.name} onChange={(event) => setMemberForm((current) => ({ ...current, name: event.target.value }))} placeholder="Name" /><input required type="email" value={memberForm.email} onChange={(event) => setMemberForm((current) => ({ ...current, email: event.target.value }))} placeholder="Email" /><input required type="password" minLength="8" value={memberForm.password} onChange={(event) => setMemberForm((current) => ({ ...current, password: event.target.value }))} placeholder="Temporary password" /><select value={memberForm.crm_role} onChange={(event) => setMemberForm((current) => ({ ...current, crm_role: event.target.value }))}><option value="finance">Finance</option><option value="customer_support">Customer support</option></select><button className="primary-button" type="submit">Add account</button></form>
-          {staff.filter((member) => member.crm_role !== "admin").map((member) => <div className="staff-row" key={member.id}><strong>{member.name}</strong><span>{member.email}</span><select value={member.crm_role || ""} onChange={(event) => updateStaff(member, { crm_role: event.target.value })}><option value="finance">Finance</option><option value="customer_support">Customer support</option></select><button className="filter-button" onClick={() => updateStaff(member, { closed: !member.crm_closed_at })}>{member.crm_closed_at ? "Unsuspend" : "Suspend"}</button><button className="danger-button" onClick={() => deleteStaff(member)}>Delete</button></div>)}
-        </section>}
-        {activeSection === "staff" && <StaffWorkspace view={activeView} members={staff} policies={policies} policyForm={policyForm} setPolicyForm={setPolicyForm} onCreatePolicy={createPolicy} logs={staffLogs} onUpdate={updateStaff} onDelete={deleteStaff} isAdmin={isAdmin} />}
-        {activeSection === "settings" && <SettingsWorkspace view={activeView} user={profile} profileForm={profileForm} setProfileForm={setProfileForm} onSaveProfile={saveProfileSettings} onAvatarChange={updateProfileAvatar} profileAvatar={profileAvatar} passwordForm={passwordForm} setPasswordForm={setPasswordForm} onChangePassword={changePassword} farm={settingsFarm} farmName={farmName} setFarmName={setFarmName} onSaveFarm={saveFarmSettings} canEditFarm={Boolean(settingsFarm)} members={farmMembers} canManageMembers={isAdmin || profile?.role === "farmOwner"} memberPermissions={memberPermissions} setMemberPermissions={setMemberPermissions} onSaveMember={saveMemberPermissions} notifications={farmNotifications} onRefreshNotifications={loadFarmNotifications} onReadNotification={markFarmNotificationRead} />}
+        {activeSection === "staff" && <StaffWorkspace view={activeView} members={staff} policies={policies} policyForm={policyForm} setPolicyForm={setPolicyForm} onCreatePolicy={createPolicy} logs={staffLogs} onUpdate={updateStaff} onDelete={deleteStaff} isAdmin={isAdmin} memberForm={memberForm} setMemberForm={setMemberForm} onAdd={addStaff} />}
+        {activeSection === "settings" && <SettingsWorkspace view={activeView} user={profile} profileForm={profileForm} setProfileForm={setProfileForm} onSaveProfile={saveProfileSettings} onAvatarChange={updateProfileAvatar} profileAvatar={profileAvatar} onLogout={logout} passwordForm={passwordForm} setPasswordForm={setPasswordForm} onChangePassword={changePassword} farm={settingsFarm} farmName={farmName} setFarmName={setFarmName} onSaveFarm={saveFarmSettings} canEditFarm={Boolean(settingsFarm)} members={farmMembers} canManageMembers={isAdmin || profile?.role === "farmOwner"} memberPermissions={memberPermissions} setMemberPermissions={setMemberPermissions} onSaveMember={saveMemberPermissions} notifications={farmNotifications} onRefreshNotifications={loadFarmNotifications} onReadNotification={markFarmNotificationRead} />}
         {activeSection === "finance" && (
           <FinanceWorkspace
             view={activeView}

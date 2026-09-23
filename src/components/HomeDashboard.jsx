@@ -5,6 +5,10 @@ export function HomeDashboard({ dashboard, loading, error, onRefresh, onOpen, on
   const [chartType, setChartType] = useState("pie");
   const [showChartMenu, setShowChartMenu] = useState(false);
   const [heroSlide, setHeroSlide] = useState(0);
+  useEffect(() => {
+    const timer = window.setInterval(() => setHeroSlide((current) => (current + 1) % 2), 5000);
+    return () => window.clearInterval(timer);
+  }, []);
   if (loading && !dashboard) {
     return <section className="home-dashboard-state panel-card"><div className="eyebrow">Workspace at a glance</div><h2>Loading dashboard</h2><p>Fetching current farm metrics and work queues.</p></section>;
   }
@@ -38,10 +42,6 @@ export function HomeDashboard({ dashboard, loading, error, onRefresh, onOpen, on
     { label: "Pending payments", value: alerts.pending_payments || 0, action: () => onOpen("finance"), tone: "payment" },
     { label: "New orders", value: alerts.new_orders || 0, action: () => onOpen("customers"), tone: "order" },
   ];
-  useEffect(() => {
-    const timer = window.setInterval(() => setHeroSlide((current) => (current + 1) % 2), 5000);
-    return () => window.clearInterval(timer);
-  }, []);
   return (
     <section className="home-dashboard">
       <div className="home-intro">

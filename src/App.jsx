@@ -926,6 +926,7 @@ function App() {
       loadCrmMessages();
       loadDirectory();
       loadSettingsData();
+      loadReport();
       if (activeView.startsWith("orders-")) {
         loadOrders(activeView.replace("orders-", ""));
       }

@@ -83,6 +83,7 @@ function App() {
   const [taskForm, setTaskForm] = useState({ title: "", notes: "", due_at: "", priority: "normal", assigned_to: "" });
   const [filters, setFilters] = useState({ search: "", status: "all", type: "all", assigned_to: "all", sort_by: "latest", sort_direction: "desc", page: 1 });
   const [customerMeta, setCustomerMeta] = useState({ current_page: 1, last_page: 1, per_page: 25, total: 0 });
+  const [customerViewMode, setCustomerViewMode] = useState(() => localStorage.getItem("pigyworld_crm_customer_view") || "table");
   const [form, setForm] = useState(emptyCustomer);
   const [interaction, setInteraction] = useState({ type: "message", notes: "" });
   const [editing, setEditing] = useState(false);
@@ -1271,12 +1272,7 @@ function App() {
                 <h2>Customer list</h2>
                 <span>{customerMeta.total} records in view</span>
               </div>
-              <button
-                className="filter-button"
-                onClick={() => setFilters((current) => ({ ...current, search: "", status: "all", type: "all", assigned_to: "all", page: 1 }))}
-              >
-                Clear filters
-              </button>
+              <div className="customer-list-actions"><div className="customer-view-toggle" role="group" aria-label="Customer list view"><button className={customerViewMode === "table" ? "selected" : ""} type="button" onClick={() => { setCustomerViewMode("table"); localStorage.setItem("pigyworld_crm_customer_view", "table"); }}>Table</button><button className={customerViewMode === "cards" ? "selected" : ""} type="button" onClick={() => { setCustomerViewMode("cards"); localStorage.setItem("pigyworld_crm_customer_view", "cards"); }}>Cards</button></div><button className="filter-button" type="button" onClick={() => setFilters((current) => ({ ...current, search: "", status: "all", type: "all", assigned_to: "all", page: 1 }))}>Clear filters</button></div>
             </div>
             <label className="search-field" htmlFor="customer-search">
               <span>⌕</span>
@@ -1311,7 +1307,7 @@ function App() {
               <select aria-label="Filter by assigned staff" value={filters.assigned_to} onChange={(event) => setFilters((current) => ({ ...current, assigned_to: event.target.value, page: 1 }))}><option value="all">All staff</option>{staff.map((member) => <option key={member.id} value={member.id}>{member.name}</option>)}</select>
               <select aria-label="Sort customers" value={`${filters.sort_by}:${filters.sort_direction}`} onChange={(event) => { const [sort_by, sort_direction] = event.target.value.split(":"); setFilters((current) => ({ ...current, sort_by, sort_direction, page: 1 })); }}><option value="latest:desc">Recently added</option><option value="name:asc">Name A-Z</option><option value="name:desc">Name Z-A</option><option value="status:asc">Status</option><option value="updated_at:desc">Recently updated</option></select>
             </div>
-            <div className="customer-list">
+            <div className={`customer-list ${customerViewMode === "cards" ? "cards-view" : "table-view"}`}>
               {loading ? (
                 <div className="state-message">Loading customers…</div>
               ) : customers.length === 0 ? (

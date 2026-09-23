@@ -94,7 +94,7 @@ function App() {
   const [farmId, setFarmId] = useState("");
   const [staff, setStaff] = useState([]);
   const [staffCategories, setStaffCategories] = useState([]);
-  const [staffGroups, setStaffGroups] = useState({ directory: true });
+  const [staffGroups, setStaffGroups] = useState({ directory: true, policies: true });
   const [policies, setPolicies] = useState([]);
   const [policyForm, setPolicyForm] = useState({ title: "", audience: "all", effectiveDate: "", summary: "" });
   const [staffLogs, setStaffLogs] = useState([]);

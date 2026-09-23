@@ -1,3 +1,5 @@
+import { useState } from "react";
+
 function SubscriptionRows({ subscriptions }) {
   if (subscriptions.length === 0) return <div className="state-message">No farm subscription records are available yet.</div>;
   return <div className="finance-record-list">{subscriptions.map((farm) => <article className="finance-record-row" key={farm.id}><div><strong>{farm.name}</strong><span>{farm.mother_pig_count ?? 0} mother pigs</span></div><span>{farm.subscription_plan || "No plan"}</span><span>{farm.payment_amount ? `${farm.payment_amount} ${farm.payment_currency}` : "No payment"}</span><span className={`payment-status ${farm.payment_status === "paid" ? "paid" : "pending"}`}>{farm.payment_status || "pending"}</span></article>)}</div>;
@@ -13,27 +15,30 @@ function ReportingView({ report }) {
 }
 
 function FinancialGraph({ report }) {
+  const [graphState, setGraphState] = useState("default");
   const metrics = [
-    { label: "Customers", value: Number(report?.total_customers || 0), color: "#286846" },
-    { label: "Active", value: Number(report?.active_relationships || 0), color: "#5b9c98" },
-    { label: "Revenue", value: Number(report?.revenue_collected || 0), color: "#cf8a43" },
+    { label: "Customers", value: Number(report?.total_customers || 0), color: "#5ee0b7" },
+    { label: "Active", value: Number(report?.active_relationships || 0), color: "#73a7ff" },
+    { label: "Revenue", value: Number(report?.revenue_collected || 0), color: "#ffc76b" },
   ];
   const maxValue = Math.max(...metrics.map((metric) => metric.value), 1);
+  const isMinimized = graphState === "minimized";
+  const isMaximized = graphState === "maximized";
 
-  return <section className="panel-card finance-graph-panel" aria-label="Farm financial graph">
-    <div className="panel-heading"><div><div className="eyebrow">Financial trend</div><h2>Farm performance</h2></div><span>Current report</span></div>
-    <div className="finance-graph" role="img" aria-label="Bar graph comparing customers, active relationships, and collected revenue">
+  return <section className={`panel-card finance-graph-panel ${isMinimized ? "is-minimized" : ""} ${isMaximized ? "is-maximized" : ""}`} aria-label="Farm financial graph">
+    <div className="panel-heading"><div><div className="eyebrow">Financial trend</div><h2>Farm performance</h2></div><div className="finance-graph-actions"><span>Current report</span><button className="finance-icon-button" type="button" title={isMinimized ? "Expand graph" : "Minimize graph"} aria-label={isMinimized ? "Expand graph" : "Minimize graph"} onClick={() => setGraphState(isMinimized ? "default" : "minimized")}>{isMinimized ? "＋" : "−"}</button><button className="finance-icon-button" type="button" title={isMaximized ? "Restore graph" : "Maximize graph"} aria-label={isMaximized ? "Restore graph" : "Maximize graph"} onClick={() => setGraphState(isMaximized ? "default" : "maximized")}>{isMaximized ? "⤢" : "⤢"}</button></div></div>
+    {!isMinimized && <div className="finance-graph" role="img" aria-label="Bar graph comparing customers, active relationships, and collected revenue">
       {metrics.map((metric) => <div className="finance-graph-column" key={metric.label}>
         <strong>{metric.value.toLocaleString()}</strong>
         <div className="finance-graph-track"><i style={{ height: `${Math.max((metric.value / maxValue) * 100, 5)}%`, background: metric.color }} /></div>
         <span>{metric.label}</span>
       </div>)}
-    </div>
+    </div>}
   </section>;
 }
 
 function OverviewView({ report, calculator, setCalculator, projectedRevenue }) {
-  return <section className="finance-overview-layout"><FinancialGraph report={report} /><section className="panel-card finance-workspace-panel finance-snapshot-panel"><div className="panel-heading"><div><div className="eyebrow">Finance overview</div><h2>Farm financial snapshot</h2></div><span>{report?.generated_at ? new Date(report.generated_at).toLocaleDateString() : "No report date"}</span></div><div className="finance-kpis"><div className="finance-kpi"><span>Customers</span><strong>{report?.total_customers ?? 0}</strong><small>Total relationships</small></div><div className="finance-kpi finance-kpi-accent"><span>Active relationships</span><strong>{report?.active_relationships ?? 0}</strong><small>Excluding lost records</small></div><div className="finance-kpi"><span>Collected revenue</span><strong>{report?.revenue_collected ?? 0}</strong><small>Paid transactions</small></div></div><div className="calculator-card"><div className="eyebrow">Revenue planner</div><h2>Project monthly revenue</h2><p>Estimate revenue using your current customer volume and expected monthly value.</p><div className="finance-plan-form"><input type="number" min="0" value={calculator.customers} onChange={(event) => setCalculator((current) => ({ ...current, customers: event.target.value }))} placeholder="Customers" /><input type="number" min="0" step="0.01" value={calculator.amount} onChange={(event) => setCalculator((current) => ({ ...current, amount: event.target.value }))} placeholder="Monthly value" /></div><div className="calculator-total"><span>Projected monthly revenue</span><strong>{projectedRevenue}</strong></div></div></section></section>;
+  return <section className="finance-overview-layout"><section className="panel-card finance-workspace-panel finance-snapshot-panel"><div className="panel-heading"><div><div className="eyebrow">Finance overview</div><h2>Farm financial snapshot</h2></div><span>{report?.generated_at ? new Date(report.generated_at).toLocaleDateString() : "No report date"}</span></div><div className="finance-kpis"><div className="finance-kpi"><span>Customers</span><strong>{report?.total_customers ?? 0}</strong><small>Total relationships</small></div><div className="finance-kpi finance-kpi-accent"><span>Active relationships</span><strong>{report?.active_relationships ?? 0}</strong><small>Excluding lost records</small></div><div className="finance-kpi"><span>Collected revenue</span><strong>{report?.revenue_collected ?? 0}</strong><small>Paid transactions</small></div></div><div className="calculator-card"><div className="eyebrow">Revenue planner</div><h2>Project monthly revenue</h2><p>Estimate revenue using your current customer volume and expected monthly value.</p><div className="finance-plan-form"><input type="number" min="0" value={calculator.customers} onChange={(event) => setCalculator((current) => ({ ...current, customers: event.target.value }))} placeholder="Customers" /><input type="number" min="0" step="0.01" value={calculator.amount} onChange={(event) => setCalculator((current) => ({ ...current, amount: event.target.value }))} placeholder="Monthly value" /></div><div className="calculator-total"><span>Projected monthly revenue</span><strong>{projectedRevenue}</strong></div></div></section><FinancialGraph report={report} /></section>;
 }
 
 function PaymentsView({ report }) {

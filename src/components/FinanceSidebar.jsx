@@ -1,4 +1,8 @@
 const financeLinks = [
+  { id: "finance-overview", label: "Finance overview", icon: "◈" },
+  { id: "finance-subscriptions", label: "Farm subscriptions", icon: "▣" },
+  { id: "finance-payments", label: "Payment activity", icon: "₿" },
+  { id: "finance-plans", label: "Subscription plans", icon: "◇" },
   { id: "finance-reporting", label: "Revenue reporting", icon: "⌁" },
 ];
 

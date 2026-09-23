@@ -1,6 +1,7 @@
 export const adminSections = [
   { id: "home", label: "Home", icon: "⌂" },
   { id: "customers", label: "Customers", icon: "◈" },
+  { id: "tasks", label: "Tasks", icon: "✓" },
   { id: "staff", label: "Staff", icon: "♙" },
   { id: "finance", label: "Finance", icon: "⌁" },
   { id: "communication", label: "Communication", icon: "✦" },

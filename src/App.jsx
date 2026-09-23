@@ -13,6 +13,7 @@ import { Login } from "./components/Login";
 import { SplashScreen } from "./components/SplashScreen";
 import { CustomerForm } from "./components/CustomerForm";
 import { TaskPanel } from "./components/TaskPanel";
+import { TasksWorkspace } from "./components/TasksWorkspace";
 import { StaffSidebar } from "./components/StaffSidebar";
 import { StaffWorkspace } from "./components/StaffWorkspace";
 import { CommunicationSidebar } from "./components/CommunicationSidebar";
@@ -74,6 +75,10 @@ function App() {
   const [interactions, setInteractions] = useState([]);
   const [timeline, setTimeline] = useState([]);
   const [tasks, setTasks] = useState([]);
+  const [globalTasks, setGlobalTasks] = useState([]);
+  const [globalTasksLoading, setGlobalTasksLoading] = useState(false);
+  const [globalTasksError, setGlobalTasksError] = useState("");
+  const [taskFilters, setTaskFilters] = useState({ search: "", status: "all", priority: "all", assigned_to: "all", overdue: false });
   const [taskForm, setTaskForm] = useState({ title: "", notes: "", due_at: "", priority: "normal", assigned_to: "" });
   const [filters, setFilters] = useState({ search: "", status: "all" });
   const [form, setForm] = useState(emptyCustomer);
@@ -151,6 +156,7 @@ function App() {
   const selectSection = (section) => {
     setActiveSection(section);
     if (section === "customers") setActiveView("customers");
+    if (section === "tasks") setActiveView("tasks");
     if (section === "staff") setActiveView("staff-list");
     if (section === "finance") setActiveView("finance-reporting");
     if (section === "communication") setActiveView("communication-inbox");
@@ -669,6 +675,37 @@ function App() {
       );
     }
   };
+  const loadGlobalTasks = async () => {
+    if (!auth.token || !farmId) return;
+    try {
+      setGlobalTasksLoading(true);
+      setGlobalTasksError("");
+      const params = {
+        farm_id: farmId,
+        ...(taskFilters.search ? { search: taskFilters.search } : {}),
+        ...(taskFilters.status !== "all" ? { status: taskFilters.status } : {}),
+        ...(taskFilters.priority !== "all" ? { priority: taskFilters.priority } : {}),
+        ...(taskFilters.assigned_to !== "all" ? { assigned_to: taskFilters.assigned_to } : {}),
+        ...(taskFilters.overdue ? { overdue: 1 } : {}),
+        _refresh: Date.now(),
+      };
+      const response = await api.get("/crm/tasks", { params });
+      setGlobalTasks(response.data?.data || []);
+    } catch (error) {
+      setGlobalTasksError(error.response?.data?.message || "Unable to load follow-up tasks.");
+    } finally {
+      setGlobalTasksLoading(false);
+    }
+  };
+  const updateGlobalTaskStatus = async (task, status) => {
+    try {
+      await api.patch(`/crm/customers/${task.customer_id}/tasks/${task.id}`, { status });
+      await loadGlobalTasks();
+      showNotice(status === "completed" ? "Task completed." : "Task reopened.", "success");
+    } catch (error) {
+      showNotice(error.response?.data?.message || "Could not update the task.", "error");
+    }
+  };
   const loadCrmMessages = async () => {
     if (!auth.token || !farmId || !canReadCommunication) return;
     try {
@@ -816,7 +853,12 @@ function App() {
   };
   const refreshCurrentView = () => {
     if (activeSection === "home") return loadDashboard();
-    if (activeSection === "customers") return activeView.startsWith("orders-") ? loadOrders(activeView.replace("orders-", "")) : loadCustomers();
+    if (activeSection === "customers") {
+      if (activeView.startsWith("orders-")) return loadOrders(activeView.replace("orders-", ""));
+      if (["farm-owners", "farm-managers", "farm-workers", "relationships"].includes(activeView)) return loadDirectory();
+      return loadCustomers();
+    }
+    if (activeSection === "tasks") return loadGlobalTasks();
     if (activeSection === "staff") return loadStaff();
     if (activeSection === "communication") return loadCrmMessages();
     if (activeSection === "settings") return activeView === "settings-notifications" ? loadFarmNotifications() : loadSettingsData();
@@ -930,8 +972,15 @@ function App() {
       loadDirectory();
       loadSettingsData();
       loadReport();
+      loadGlobalTasks();
     }
   }, [auth.token, farmId, canReadCommunication]);
+
+  useEffect(() => {
+    if (activeSection !== "tasks") return undefined;
+    const timer = window.setTimeout(() => loadGlobalTasks(), 250);
+    return () => window.clearTimeout(timer);
+  }, [activeSection, farmId, taskFilters.search, taskFilters.status, taskFilters.priority, taskFilters.assigned_to, taskFilters.overdue]);
 
   useEffect(() => {
     if (!auth.token || !farmId) return undefined;
@@ -939,10 +988,12 @@ function App() {
       loadCustomers();
       loadDashboard();
       loadStaff();
+      loadGlobalTasks();
       loadCrmMessages();
       loadDirectory();
       loadSettingsData();
       loadReport();
+      loadPlans();
       if (activeView.startsWith("orders-")) {
         loadOrders(activeView.replace("orders-", ""));
       }
@@ -1030,6 +1081,8 @@ function App() {
                           : activeView === "staff-logs"
                             ? "Staff logs"
                             : "Staff"
+                  : activeSection === "tasks"
+                    ? "Tasks and follow-ups"
                   : activeSection === "settings"
                     ? activeView === "settings-security"
                       ? "Password and security"
@@ -1062,12 +1115,9 @@ function App() {
             </h1>
           </div>
           <div className="top-actions">
-            {activeSection === "customers" && <button className="ghost-button" type="button" onClick={loadCustomers}>
-              ↻ Refresh
-            </button>}
-            {activeSection === "finance" && <button className="ghost-button" type="button" onClick={refreshCurrentView}>
-              ↻ Refresh finance
-            </button>}
+            <button className="ghost-button" type="button" onClick={refreshCurrentView}>
+              ↻ Refresh {activeSection}
+            </button>
             {activeSection === "customers" && canWriteCustomers && <button
               className="primary-button"
               onClick={() => {
@@ -1084,6 +1134,7 @@ function App() {
           <div className={`notice ${notice.tone}`}>{notice.message}</div>
         )}
         {activeSection === "home" && <HomeDashboard dashboard={dashboard} loading={dashboardLoading} error={dashboardError} onRefresh={loadDashboard} onOpen={selectSection} onOpenStatus={(status) => { setFilters({ search: "", status }); selectSection("customers"); }} />}
+        {activeSection === "tasks" && <TasksWorkspace tasks={globalTasks} staff={staff} loading={globalTasksLoading} error={globalTasksError} filters={taskFilters} setFilters={setTaskFilters} onRefresh={loadGlobalTasks} onToggle={updateGlobalTaskStatus} />}
         {activeSection === "customers" && ["farm-owners", "farm-managers", "farm-workers", "relationships"].includes(activeView) && <DirectoryView view={activeView} directory={directory} loading={directoryLoading} error={directoryError} onRefresh={loadDirectory} />}
         {activeSection === "customers" && activeView.startsWith("orders-") && <OrdersView status={activeView.replace("orders-", "")} orders={orders} loading={ordersLoading} error={ordersError} onRefresh={() => loadOrders(activeView.replace("orders-", ""))} />}
         {activeSection === "communication" && <CommunicationWorkspace view={activeView} messages={crmMessages} staff={staff} notification={notification} setNotification={setNotification} onSubmit={sendNotification} onRefresh={loadCrmMessages} onReply={(message) => { setNotification((current) => ({ ...current, recipient_id: message.sender_id, message: `Hi ${message.sender_name || "there"}, ` })); setActiveView("communication-broadcast"); }} selected={selected} interactions={interactions} templates={communicationTemplates} onUseTemplate={addQuickAutomation} canNotify={canNotify} canReply={canReply} canRead={canReadCommunication} />}
@@ -1205,9 +1256,11 @@ function App() {
                 Clear filters
               </button>
             </div>
-            <div className="search-field">
+            <label className="search-field" htmlFor="customer-search">
               <span>⌕</span>
               <input
+                id="customer-search"
+                aria-label="Search customers"
                 value={filters.search}
                 onChange={(event) =>
                   setFilters((current) => ({
@@ -1217,7 +1270,7 @@ function App() {
                 }
                 placeholder="Search name, company, or email"
               />
-            </div>
+            </label>
             <div className="filter-tabs">
               {statuses.map((status) => (
                 <button

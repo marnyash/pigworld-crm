@@ -17,8 +17,8 @@ function OverviewView({ report, calculator, setCalculator, projectedRevenue }) {
 }
 
 function PaymentsView({ report }) {
-  const subscriptions = report?.subscriptions || [];
-  return <section className="panel-card finance-workspace-panel"><div className="panel-heading"><div><div className="eyebrow">Payment activity</div><h2>Farm payment status</h2></div><span>{subscriptions.length} farms</span></div><SubscriptionRows subscriptions={subscriptions} /></section>;
+  const payments = report?.payments || [];
+  return <section className="panel-card finance-workspace-panel"><div className="panel-heading"><div><div className="eyebrow">Payment activity</div><h2>Transaction ledger</h2></div><span>{payments.length} transactions</span></div>{payments.length === 0 ? <div className="state-message">No payment transactions are available yet.</div> : <div className="finance-record-list">{payments.map((payment) => <article className="finance-record-row" key={payment.id}><div><strong>{payment.farm_name || "Farm"}</strong><span>{payment.plan_code || "Plan"}</span></div><span>{payment.amount} {payment.currency}</span><span>{payment.paid_at ? new Date(payment.paid_at).toLocaleDateString() : "Not paid"}</span><span className={`payment-status ${payment.status === "paid" ? "paid" : "pending"}`}>{payment.status}</span><small>{payment.mpesa_receipt || "No receipt"}</small></article>)}</div>}</section>;
 }
 
 export function FinanceWorkspace({ view, customers, counts, report, calculator, setCalculator, projectedRevenue, plans, planForm, setPlanForm, savePlan, togglePlan, canManagePlans, statuses }) {

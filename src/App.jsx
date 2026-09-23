@@ -81,7 +81,8 @@ function App() {
   const [globalTasksError, setGlobalTasksError] = useState("");
   const [taskFilters, setTaskFilters] = useState({ search: "", status: "all", priority: "all", assigned_to: "all", overdue: false });
   const [taskForm, setTaskForm] = useState({ title: "", notes: "", due_at: "", priority: "normal", assigned_to: "" });
-  const [filters, setFilters] = useState({ search: "", status: "all" });
+  const [filters, setFilters] = useState({ search: "", status: "all", type: "all", assigned_to: "all", sort_by: "latest", sort_direction: "desc", page: 1 });
+  const [customerMeta, setCustomerMeta] = useState({ current_page: 1, last_page: 1, per_page: 25, total: 0 });
   const [form, setForm] = useState(emptyCustomer);
   const [interaction, setInteraction] = useState({ type: "message", notes: "" });
   const [editing, setEditing] = useState(false);
@@ -406,11 +407,18 @@ function App() {
         ...(farmId ? { farm_id: farmId } : {}),
         ...(filters.search ? { search: filters.search } : {}),
         ...(filters.status !== "all" ? { status: filters.status } : {}),
+        ...(filters.type !== "all" ? { type: filters.type } : {}),
+        ...(filters.assigned_to !== "all" ? { assigned_to: filters.assigned_to } : {}),
+        sort_by: filters.sort_by,
+        sort_direction: filters.sort_direction,
+        page: filters.page,
+        per_page: 25,
         _refresh: Date.now(),
       };
       const response = await api.get("/crm/customers", { params });
       const data = response.data?.data || [];
       setCustomers(data);
+      setCustomerMeta(response.data?.meta || { current_page: 1, last_page: 1, per_page: 25, total: data.length });
       setSelectedId((current) =>
         data.some((customer) => customer.id === current)
           ? current
@@ -430,7 +438,7 @@ function App() {
     if (!auth.token) return undefined;
     const timer = window.setTimeout(() => loadCustomers(), 300);
     return () => window.clearTimeout(timer);
-  }, [auth.token, farmId, filters.search, filters.status]);
+  }, [auth.token, farmId, filters.search, filters.status, filters.type, filters.assigned_to, filters.sort_by, filters.sort_direction, filters.page]);
   useEffect(() => {
     if (!auth.token || !isAdmin && crmRole !== "finance") return undefined;
     loadReport();
@@ -1147,7 +1155,7 @@ function App() {
         {notice && (
           <div className={`notice ${notice.tone}`}>{notice.message}</div>
         )}
-        {activeSection === "home" && <HomeDashboard dashboard={dashboard} loading={dashboardLoading} error={dashboardError} onRefresh={loadDashboard} onOpen={selectSection} onOpenStatus={(status) => { setFilters({ search: "", status }); selectSection("customers"); }} />}
+        {activeSection === "home" && <HomeDashboard dashboard={dashboard} loading={dashboardLoading} error={dashboardError} onRefresh={loadDashboard} onOpen={selectSection} onOpenStatus={(status) => { setFilters((current) => ({ ...current, search: "", status, page: 1 })); selectSection("customers"); }} />}
         {activeSection === "tasks" && <TasksWorkspace tasks={globalTasks} staff={staff} loading={globalTasksLoading} error={globalTasksError} filters={taskFilters} setFilters={setTaskFilters} onRefresh={loadGlobalTasks} onToggle={updateGlobalTaskStatus} />}
         {activeSection === "customers" && ["farm-owners", "farm-managers", "farm-workers", "relationships"].includes(activeView) && <DirectoryView view={activeView} directory={directory} loading={directoryLoading} error={directoryError} onRefresh={loadDirectory} />}
         {activeSection === "customers" && activeView.startsWith("orders-") && <OrdersView status={activeView.replace("orders-", "")} orders={orders} loading={ordersLoading} error={ordersError} onRefresh={() => loadOrders(activeView.replace("orders-", ""))} />}
@@ -1196,7 +1204,7 @@ function App() {
                   type="button"
                   className="segment-card"
                   onClick={() => {
-                    setFilters({ search: "", status: "all" });
+                    setFilters((current) => ({ ...current, search: "", status: "all", page: 1 }));
                     setActiveView("customers");
                     setSelectedId(segmentSummary[segment.id][0]?.id || null);
                   }}
@@ -1261,11 +1269,11 @@ function App() {
             <div className="panel-heading">
               <div>
                 <h2>Customer list</h2>
-                <span>{customers.length} records in view</span>
+                <span>{customerMeta.total} records in view</span>
               </div>
               <button
                 className="filter-button"
-                onClick={() => setFilters({ search: "", status: "all" })}
+                onClick={() => setFilters((current) => ({ ...current, search: "", status: "all", type: "all", assigned_to: "all", page: 1 }))}
               >
                 Clear filters
               </button>
@@ -1297,6 +1305,11 @@ function App() {
                   {status === "all" ? "All" : status}
                 </button>
               ))}
+            </div>
+            <div className="customer-filter-bar">
+              <select aria-label="Filter by customer type" value={filters.type} onChange={(event) => setFilters((current) => ({ ...current, type: event.target.value, page: 1 }))}><option value="all">All types</option><option value="lead">Leads</option><option value="buyer">Buyers</option><option value="supplier">Suppliers</option></select>
+              <select aria-label="Filter by assigned staff" value={filters.assigned_to} onChange={(event) => setFilters((current) => ({ ...current, assigned_to: event.target.value, page: 1 }))}><option value="all">All staff</option>{staff.map((member) => <option key={member.id} value={member.id}>{member.name}</option>)}</select>
+              <select aria-label="Sort customers" value={`${filters.sort_by}:${filters.sort_direction}`} onChange={(event) => { const [sort_by, sort_direction] = event.target.value.split(":"); setFilters((current) => ({ ...current, sort_by, sort_direction, page: 1 })); }}><option value="latest:desc">Recently added</option><option value="name:asc">Name A-Z</option><option value="name:desc">Name Z-A</option><option value="status:asc">Status</option><option value="updated_at:desc">Recently updated</option></select>
             </div>
             <div className="customer-list">
               {loading ? (
@@ -1338,6 +1351,7 @@ function App() {
                 ))
               )}
             </div>
+            {customerMeta.last_page > 1 && <div className="customer-pagination"><button className="filter-button" type="button" disabled={customerMeta.current_page <= 1} onClick={() => setFilters((current) => ({ ...current, page: current.page - 1 }))}>Previous</button><span>Page {customerMeta.current_page} of {customerMeta.last_page}</span><button className="filter-button" type="button" disabled={customerMeta.current_page >= customerMeta.last_page} onClick={() => setFilters((current) => ({ ...current, page: current.page + 1 }))}>Next</button></div>}
           </div>
           <div className="detail-column">
             {editing ? (

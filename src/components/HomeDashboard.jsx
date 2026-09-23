@@ -49,7 +49,7 @@ export function HomeDashboard({ dashboard, loading, error, onRefresh, onOpen, on
           {heroSlide === 0 ? <div className="home-hero-slide" key="greeting"><div className="eyebrow">Workspace at a glance</div><h2>{greeting}</h2><p>Current CRM performance and follow-up work for this farm.</p></div> : <div className="home-hero-slide" key="status"><div className="eyebrow">Today at a glance</div><h2>{new Date().toLocaleDateString([], { weekday: "long", month: "short", day: "numeric" })}</h2><p>Last data refresh: {refreshedAt}</p><div className="home-alerts">{alertItems.map((alert) => <button className={`home-alert ${alert.tone}`} type="button" key={alert.label} onClick={alert.action}><strong>{alert.value}</strong><span>{alert.label}</span></button>)}</div></div>}
           <div className="home-hero-dots" aria-label="Home summary slides"><button type="button" className={heroSlide === 0 ? "active" : ""} aria-label="Show greeting" onClick={() => setHeroSlide(0)} /><button type="button" className={heroSlide === 1 ? "active" : ""} aria-label="Show daily summary" onClick={() => setHeroSlide(1)} /></div>
         </div>
-        <button className="primary-button" type="button" onClick={onRefresh}>Refresh dashboard</button>
+        <button className="primary-button" type="button" onClick={onRefresh} disabled={loading}>{loading ? "Refreshing..." : "Refresh dashboard"}</button>
       </div>
       <div className="home-kpis">
         <HomeKpi label="Customers" value={customers.total} onClick={() => onOpen("customers")} />

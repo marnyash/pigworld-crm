@@ -796,7 +796,7 @@ function App() {
     try {
       setDashboardLoading(true);
       setDashboardError("");
-      const response = await api.get("/crm/dashboard/overview", { params: { farm_id: farmId } });
+      const response = await api.get("/crm/dashboard/overview", { params: { farm_id: farmId, _refresh: Date.now() } });
       setDashboard(response.data?.data || null);
     } catch (error) {
       const message = error.response?.data?.message || "Unable to load the CRM dashboard.";
@@ -1115,9 +1115,9 @@ function App() {
             </h1>
           </div>
           <div className="top-actions">
-            <button className="ghost-button" type="button" onClick={refreshCurrentView}>
+            {activeSection !== "home" && <button className="ghost-button" type="button" onClick={refreshCurrentView}>
               ↻ Refresh {activeSection}
-            </button>
+            </button>}
             {activeSection === "customers" && canWriteCustomers && <button
               className="primary-button"
               onClick={() => {

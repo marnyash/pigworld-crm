@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { api, clearSession, ROLE_KEY, saveProfile, saveSession, TOKEN_KEY } from "./api";
+import { api, clearSession, saveProfile, saveSession } from "./api";
 import "./customer-workspace.css";
 import { AdminNavbar } from "./components/AdminNavbar";
 import { CustomerSidebar } from "./components/CustomerSidebar";
@@ -128,8 +128,8 @@ function App() {
   const [auth, setAuth] = useState({
     email: "",
     password: "",
-    token: localStorage.getItem(TOKEN_KEY) || "",
-    role: localStorage.getItem(ROLE_KEY) || "",
+    token: "",
+    role: "",
   });
   const crmRole = auth.role || "customer_support";
   const isAdmin = crmRole === "admin";

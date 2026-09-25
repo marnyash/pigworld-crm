@@ -6,6 +6,11 @@ export const REFRESH_TOKEN_KEY = "pigyworld_refresh_token";
 export const ROLE_KEY = "pigyworld_crm_role";
 export const SESSION_KEY = "pigyworld_crm_session";
 
+function notifyAuthExpired() {
+  clearSession();
+  window.dispatchEvent(new Event("pigyworld-auth-expired"));
+}
+
 export const api = axios.create({ baseURL: API_BASE_URL });
 let refreshing;
 
@@ -21,7 +26,10 @@ api.interceptors.response.use(undefined, async (error) => {
     return Promise.reject(error);
   }
   const refreshToken = localStorage.getItem(REFRESH_TOKEN_KEY);
-  if (!refreshToken) return Promise.reject(error);
+  if (!refreshToken) {
+    notifyAuthExpired();
+    return Promise.reject(error);
+  }
   request._authRetried = true;
   try {
     refreshing ||= axios.post(`${API_BASE_URL}/auth/refresh`, { refresh_token: refreshToken });
@@ -33,8 +41,7 @@ api.interceptors.response.use(undefined, async (error) => {
     return api(request);
   } catch (refreshError) {
     refreshing = undefined;
-    clearSession();
-    window.dispatchEvent(new Event("pigyworld-auth-expired"));
+    notifyAuthExpired();
     return Promise.reject(refreshError);
   }
 });

@@ -95,8 +95,48 @@ function App() {
   const [staff, setStaff] = useState([]);
   const [staffCategories, setStaffCategories] = useState([]);
   const [staffGroups, setStaffGroups] = useState({ directory: true, policies: true });
-  const [policies, setPolicies] = useState([]);
-  const [policyForm, setPolicyForm] = useState({ title: "", audience: "all", effectiveDate: "", summary: "" });
+  const buildDefaultPolicyPages = (audience) => {
+    if (audience === "finance") {
+      return ["Home", "Finance", "Tasks", "Staff → Finance", "Settings"];
+    }
+    if (audience === "customer_support") {
+      return ["Home", "Customers", "Communication", "Tasks", "Staff → Customer service", "Settings"];
+    }
+    return ["Home", "Customers", "Tasks", "Staff", "Finance", "Communication", "Settings"];
+  };
+  const defaultPolicies = [
+    {
+      id: "default-policy-access",
+      title: "CRM access and page visibility policy",
+      category: "All staff",
+      audience: "all",
+      status: "active",
+      effectiveDate: "2026-09-23",
+      summary: "All CRM users must access only the pages assigned to their role and department.",
+      details: "This policy defines the expected operational boundaries for all CRM users. Leaders are responsible for confirming access is aligned with each team member's duties and department.",
+      notes: "Managers should review page access when a role changes and keep exceptions documented in staff logs.",
+      visiblePages: ["Home", "Customers", "Tasks", "Staff", "Finance", "Communication", "Settings"],
+      updatedBy: "Pig World Admin",
+      createdBy: "Pig World Admin",
+      accessMatrix: {
+        admin: ["Home", "Customers", "Tasks", "Staff", "Finance", "Communication", "Settings"],
+        finance: ["Home", "Finance", "Tasks", "Staff → Finance", "Settings"],
+        customer_service: ["Home", "Customers", "Communication", "Tasks", "Staff → Customer service", "Settings"],
+      },
+    },
+  ];
+  const [policies, setPolicies] = useState(defaultPolicies);
+  const [policyForm, setPolicyForm] = useState({
+    title: "",
+    audience: "all",
+    category: "All staff",
+    status: "active",
+    effectiveDate: "",
+    summary: "",
+    details: "",
+    notes: "",
+    visiblePages: buildDefaultPolicyPages("all"),
+  });
   const [staffLogs, setStaffLogs] = useState([]);
   const [crmMessages, setCrmMessages] = useState([]);
   const [profile, setProfile] = useState(null);
@@ -966,11 +1006,54 @@ function App() {
   };
   const createPolicy = (event) => {
     event.preventDefault();
-    const policy = { id: `policy-${Date.now()}`, ...policyForm };
+    const policy = {
+      id: `policy-${Date.now()}`,
+      ...policyForm,
+      title: policyForm.title.trim(),
+      summary: policyForm.summary.trim(),
+      details: (policyForm.details || policyForm.summary).trim(),
+      notes: (policyForm.notes || "Managers review role access when responsibilities change.").trim(),
+      visiblePages: policyForm.visiblePages?.length ? policyForm.visiblePages : buildDefaultPolicyPages(policyForm.audience),
+      accessMatrix: {
+        admin: ["Home", "Customers", "Tasks", "Staff", "Finance", "Communication", "Settings"],
+        finance: ["Home", "Finance", "Tasks", "Staff → Finance", "Settings"],
+        customer_service: ["Home", "Customers", "Communication", "Tasks", "Staff → Customer service", "Settings"],
+      },
+      createdBy: auth.email || "Current user",
+      updatedBy: auth.email || "Current user",
+    };
     setPolicies((current) => [policy, ...current]);
     setStaffLogs((current) => [{ id: `policy-${Date.now()}`, staff: auth.email || "Current user", action: `Published ${policy.title}`, module: "Staff policies", at: new Date().toISOString() }, ...current]);
-    setPolicyForm({ title: "", audience: "all", effectiveDate: "", summary: "" });
+    setPolicyForm({
+      title: "",
+      audience: "all",
+      category: "All staff",
+      status: "active",
+      effectiveDate: "",
+      summary: "",
+      details: "",
+      notes: "",
+      visiblePages: buildDefaultPolicyPages("all"),
+    });
     showNotice("Staff policy published.", "success");
+  };
+  const archivePolicy = (policy) => {
+    setPolicies((current) => current.map((item) => item.id === policy.id ? { ...item, status: "archived", updatedBy: auth.email || "Current user" } : item));
+    showNotice(`${policy.title} archived.`, "info");
+  };
+  const editPolicy = (policy) => {
+    setPolicyForm({
+      title: policy.title,
+      audience: policy.audience,
+      category: policy.category || "All staff",
+      status: policy.status || "active",
+      effectiveDate: policy.effectiveDate,
+      summary: policy.summary,
+      details: policy.details || policy.summary,
+      notes: policy.notes || "",
+      visiblePages: policy.visiblePages || buildDefaultPolicyPages(policy.audience),
+    });
+    showNotice(`Loaded ${policy.title} for editing.`, "info");
   };
   const sendNotification = async (event) => {
     event.preventDefault();
@@ -1186,7 +1269,7 @@ function App() {
         {activeSection === "customers" && ["farm-owners", "farm-managers", "farm-workers", "relationships"].includes(activeView) && <DirectoryView view={activeView} directory={directory} loading={directoryLoading} error={directoryError} onRefresh={loadDirectory} />}
         {activeSection === "customers" && activeView.startsWith("orders-") && <OrdersView status={activeView.replace("orders-", "")} orders={orders} loading={ordersLoading} error={ordersError} onRefresh={() => loadOrders(activeView.replace("orders-", ""))} />}
         {activeSection === "communication" && <CommunicationWorkspace view={activeView} messages={crmMessages} staff={staff} notification={notification} setNotification={setNotification} onSubmit={sendNotification} onRefresh={loadCrmMessages} onReply={(message) => { setNotification((current) => ({ ...current, recipient_id: message.sender_id, message: `Hi ${message.sender_name || "there"}, ` })); setActiveView("communication-broadcast"); }} selected={selected} interactions={interactions} templates={communicationTemplates} onUseTemplate={addQuickAutomation} canNotify={canNotify} canReply={canReply} canRead={canReadCommunication} />}
-        {activeSection === "staff" && <StaffWorkspace view={activeView} members={staff} dashboard={dashboard} categories={staffCategories} policies={policies} policyForm={policyForm} setPolicyForm={setPolicyForm} onCreatePolicy={createPolicy} logs={staffLogs} onUpdate={updateStaff} onDelete={deleteStaff} isAdmin={isAdmin} memberForm={memberForm} setMemberForm={setMemberForm} onAdd={addStaff} onAddCategory={addStaffCategory} onDeleteCategory={deleteStaffCategory} />}
+        {activeSection === "staff" && <StaffWorkspace view={activeView} members={staff} dashboard={dashboard} categories={staffCategories} policies={policies} policyForm={policyForm} setPolicyForm={setPolicyForm} onCreatePolicy={createPolicy} onArchivePolicy={archivePolicy} onEditPolicy={editPolicy} logs={staffLogs} onUpdate={updateStaff} onDelete={deleteStaff} isAdmin={isAdmin} memberForm={memberForm} setMemberForm={setMemberForm} onAdd={addStaff} onAddCategory={addStaffCategory} onDeleteCategory={deleteStaffCategory} />}
         {activeSection === "settings" && <SettingsWorkspace view={activeView} user={profile} profileForm={profileForm} setProfileForm={setProfileForm} onSaveProfile={saveProfileSettings} onAvatarChange={updateProfileAvatar} profileAvatar={profileAvatar} onLogout={logout} passwordForm={passwordForm} setPasswordForm={setPasswordForm} onChangePassword={changePassword} farm={settingsFarm} farmName={farmName} setFarmName={setFarmName} onSaveFarm={saveFarmSettings} canEditFarm={Boolean(settingsFarm)} members={farmMembers} canManageMembers={isAdmin || profile?.role === "farmOwner"} memberPermissions={memberPermissions} setMemberPermissions={setMemberPermissions} onSaveMember={saveMemberPermissions} notifications={farmNotifications} onRefreshNotifications={loadFarmNotifications} onReadNotification={markFarmNotificationRead} />}
         {activeSection === "finance" && (
           <FinanceWorkspace

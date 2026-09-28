@@ -6,6 +6,11 @@ export const REFRESH_TOKEN_KEY = "pigyworld_refresh_token";
 export const ROLE_KEY = "pigyworld_crm_role";
 export const SESSION_KEY = "pigyworld_crm_session";
 
+const sessionStorageFor = (key) =>
+  localStorage.getItem(key) !== null ? localStorage : sessionStorage;
+const readSessionValue = (key) =>
+  localStorage.getItem(key) ?? sessionStorage.getItem(key);
+
 function notifyAuthExpired() {
   clearSession();
   window.dispatchEvent(new Event("pigyworld-auth-expired"));
@@ -15,7 +20,7 @@ export const api = axios.create({ baseURL: API_BASE_URL });
 let refreshing;
 
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem(TOKEN_KEY);
+  const token = readSessionValue(TOKEN_KEY);
   if (token) config.headers.Authorization = `Bearer ${token}`;
   return config;
 });
@@ -25,7 +30,7 @@ api.interceptors.response.use(undefined, async (error) => {
   if (error.response?.status !== 401 || request?.skipAuthRefresh || request?._authRetried) {
     return Promise.reject(error);
   }
-  const refreshToken = localStorage.getItem(REFRESH_TOKEN_KEY);
+  const refreshToken = readSessionValue(REFRESH_TOKEN_KEY);
   if (!refreshToken) {
     notifyAuthExpired();
     return Promise.reject(error);
@@ -35,8 +40,9 @@ api.interceptors.response.use(undefined, async (error) => {
     refreshing ||= axios.post(`${API_BASE_URL}/auth/refresh`, { refresh_token: refreshToken });
     const response = await refreshing;
     refreshing = undefined;
-    localStorage.setItem(TOKEN_KEY, response.data.access_token);
-    localStorage.setItem(REFRESH_TOKEN_KEY, response.data.refresh_token);
+    const storage = sessionStorageFor(TOKEN_KEY);
+    storage.setItem(TOKEN_KEY, response.data.access_token);
+    storage.setItem(REFRESH_TOKEN_KEY, response.data.refresh_token);
     request.headers.Authorization = `Bearer ${response.data.access_token}`;
     return api(request);
   } catch (refreshError) {
@@ -46,14 +52,16 @@ api.interceptors.response.use(undefined, async (error) => {
   }
 });
 
-export function saveSession(response) {
+export function saveSession(response, rememberMe = false) {
   const user = response.data?.user || {};
   const farms = response.data?.farms?.data || response.data?.farms || [];
   const session = { user, farms };
-  localStorage.setItem(TOKEN_KEY, response.data.access_token);
-  localStorage.setItem(REFRESH_TOKEN_KEY, response.data.refresh_token || "");
-  localStorage.setItem(ROLE_KEY, user.crm_role || (user.role === "farmOwner" ? "admin" : "customer_support"));
-  localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+  clearSession();
+  const storage = rememberMe ? localStorage : sessionStorage;
+  storage.setItem(TOKEN_KEY, response.data.access_token);
+  storage.setItem(REFRESH_TOKEN_KEY, response.data.refresh_token || "");
+  storage.setItem(ROLE_KEY, user.crm_role || (user.role === "farmOwner" ? "admin" : "customer_support"));
+  storage.setItem(SESSION_KEY, JSON.stringify(session));
   return session;
 }
 
@@ -62,8 +70,9 @@ export function saveProfile(response) {
     user: response.data?.user || {},
     farms: response.data?.farms?.data || response.data?.farms || [],
   };
-  localStorage.setItem(ROLE_KEY, session.user.crm_role || (session.user.role === "farmOwner" ? "admin" : "customer_support"));
-  localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+  const storage = sessionStorageFor(SESSION_KEY);
+  storage.setItem(ROLE_KEY, session.user.crm_role || (session.user.role === "farmOwner" ? "admin" : "customer_support"));
+  storage.setItem(SESSION_KEY, JSON.stringify(session));
   return session;
 }
 
@@ -72,4 +81,8 @@ export function clearSession() {
   localStorage.removeItem(REFRESH_TOKEN_KEY);
   localStorage.removeItem(ROLE_KEY);
   localStorage.removeItem(SESSION_KEY);
+  sessionStorage.removeItem(TOKEN_KEY);
+  sessionStorage.removeItem(REFRESH_TOKEN_KEY);
+  sessionStorage.removeItem(ROLE_KEY);
+  sessionStorage.removeItem(SESSION_KEY);
 }

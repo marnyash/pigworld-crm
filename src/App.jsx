@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { api, clearSession, saveProfile, saveSession } from "./api";
+import { api, clearSession, ROLE_KEY, saveProfile, saveSession, TOKEN_KEY } from "./api";
 import "./customer-workspace.css";
 import { AdminNavbar } from "./components/AdminNavbar";
 import { CustomerSidebar } from "./components/CustomerSidebar";
@@ -125,12 +125,16 @@ function App() {
   const [farmMembers, setFarmMembers] = useState([]);
   const [memberPermissions, setMemberPermissions] = useState({});
   const [farmNotifications, setFarmNotifications] = useState([]);
-  const [auth, setAuth] = useState({
+  const [auth, setAuth] = useState(() => ({
     email: "",
     password: "",
-    token: "",
-    role: "",
-  });
+    token: localStorage.getItem(TOKEN_KEY) || sessionStorage.getItem(TOKEN_KEY) || "",
+    role: localStorage.getItem(ROLE_KEY) || sessionStorage.getItem(ROLE_KEY) || "",
+    rememberMe: false,
+    challengeId: "",
+    destination: "",
+    otp: "",
+  }));
   const crmRole = auth.role || "customer_support";
   const isAdmin = crmRole === "admin";
   const canWriteCustomers = isAdmin || crmRole === "finance";
@@ -245,7 +249,7 @@ function App() {
       // The local session must still end when the server is unavailable.
     } finally {
       clearSession();
-      setAuth((current) => ({ ...current, token: "", role: "" }));
+      setAuth({ email: "", password: "", token: "", role: "", rememberMe: false, challengeId: "", destination: "", otp: "" });
       setFarmId("");
     }
   };
@@ -265,7 +269,7 @@ function App() {
     let timer;
     const resetIdleTimer = () => {
       window.clearTimeout(timer);
-      timer = window.setTimeout(logout, 5 * 60 * 1000);
+      timer = window.setTimeout(logout, 30 * 60 * 1000);
     };
     const activityEvents = ["click", "keydown", "mousemove", "scroll", "touchstart"];
     activityEvents.forEach((event) => window.addEventListener(event, resetIdleTimer));
@@ -451,36 +455,71 @@ function App() {
       .catch(() => showNotice("Unable to load customer workflow history.", "error"));
   }, [selectedId]);
 
+  const establishSession = (response, identifier, rememberMe) => {
+    const session = saveSession(response, rememberMe);
+    const token = response.data.access_token;
+    const farms = session.farms;
+    const selectedFarmId = farms[0]?.id ? String(farms[0].id) : "";
+    const user = session.user;
+    setProfile(user);
+    setProfileForm({ name: user.name || "" });
+    const role = user.crm_role || (user.role === "farmOwner" ? "admin" : "customer_support");
+    setFarmId(selectedFarmId);
+    setSettingsFarm(farms[0] || null);
+    setFarmName(farms[0]?.name || "");
+    setForm((current) => ({ ...current, farm_id: selectedFarmId }));
+    setAuth((current) => ({ ...current, password: "", token, role, challengeId: "", destination: "", otp: "" }));
+    setStaffLogs([{ id: `login-${Date.now()}`, staff: user.name || user.email || identifier, action: "Signed in", module: "CRM", at: new Date().toISOString() }]);
+    showNotice(`Welcome back. ${role.replace("_", " ")} workspace loaded.`, "success");
+  };
   const login = async (event) => {
     event.preventDefault();
     try {
       const response = await api.post("/auth/login", {
         identifier: auth.email,
         password: auth.password,
+        remember_me: auth.rememberMe,
       });
-      const session = saveSession(response);
-      const token = response.data.access_token;
-      const farms = session.farms;
-      const selectedFarmId = farms[0]?.id ? String(farms[0].id) : "";
-      const user = session.user;
-      setProfile(user);
-      setProfileForm({ name: user.name || "" });
-      const role =
-        user.crm_role ||
-        (user.role === "farmOwner" ? "admin" : "customer_support");
-      setFarmId(selectedFarmId);
-      setSettingsFarm(farms[0] || null);
-      setFarmName(farms[0]?.name || "");
-      setForm((current) => ({ ...current, farm_id: selectedFarmId }));
-      setAuth((current) => ({ ...current, token, role }));
-      setStaffLogs([{ id: `login-${Date.now()}`, staff: user.name || user.email || auth.email, action: "Signed in", module: "CRM", at: new Date().toISOString() }]);
-      showNotice(`Welcome back. ${role.replace("_", " ")} workspace loaded.`);
+      if (response.data?.otp_required) {
+        setAuth((current) => ({
+          ...current,
+          challengeId: response.data.challenge_id,
+          destination: response.data.destination || "your registered email",
+          otp: "",
+        }));
+        showNotice("A six-digit sign-in code was sent to your email.", "success");
+        return;
+      }
+      establishSession(response, auth.email, auth.rememberMe);
     } catch (error) {
       showNotice(
         error.response?.data?.message ||
           "Authentication failed. Check your credentials.",
         "error",
       );
+    }
+  };
+  const verifyLoginOtp = async (code) => {
+    try {
+      const response = await api.post("/auth/verify-otp", {
+        challenge_id: auth.challengeId,
+        code,
+      });
+      establishSession(response, auth.email, auth.rememberMe);
+    } catch (error) {
+      showNotice(
+        error.response?.data?.message || "That code is invalid or expired. Request a new sign-in code.",
+        "error",
+      );
+    }
+  };
+  const requestPasswordReset = async (email) => {
+    try {
+      await api.post("/auth/forgot-password", { email });
+      showNotice("If that email is registered, a reset link has been sent.", "success");
+    } catch (error) {
+      const message = error.response?.data?.message || "Could not send the reset link. Please try again.";
+      showNotice(message, "error");
     }
   };
   const updateForm = (key, value) =>
@@ -1094,7 +1133,7 @@ function App() {
 
   if (!auth.token)
     return (
-      <Login auth={auth} setAuth={setAuth} onSubmit={login} notice={notice} />
+      <Login auth={auth} setAuth={setAuth} onSubmit={login} onVerifyOtp={verifyLoginOtp} onForgotPassword={requestPasswordReset} notice={notice} />
     );
   return (
     <div className={`app-shell ${activeSection === "home" ? "home-shell" : ""}`}>
@@ -1102,7 +1141,7 @@ function App() {
         <div className="brand-block">
           <img className="brand-logo" src="./pig-world-logo.jpeg" alt="Pig World Smart Farm" />
           <div>
-            <strong>Pig World</strong>
+            <strong>Pig World Smart</strong>
             <span>Customer desk</span>
           </div>
         </div>

@@ -116,6 +116,9 @@ function App() {
   });
   const [staffLogs, setStaffLogs] = useState([]);
   const [crmMessages, setCrmMessages] = useState([]);
+  const [supportConversations, setSupportConversations] = useState([]);
+  const [activeSupportConversation, setActiveSupportConversation] = useState(null);
+  const [broadcastHistory, setBroadcastHistory] = useState([]);
   const [profile, setProfile] = useState(null);
   const [profileAvatar, setProfileAvatar] = useState(() => localStorage.getItem(PROFILE_AVATAR_KEY) || "");
   const [profileForm, setProfileForm] = useState({ name: "" });
@@ -143,6 +146,7 @@ function App() {
   const canReadCommunication = isAdmin || crmRole === "finance" || crmRole === "customer_support";
   const [notification, setNotification] = useState({
     message: "",
+    title: "",
     recipient_id: "",
   });
   const [importText, setImportText] = useState("");
@@ -775,10 +779,55 @@ function App() {
   const loadCrmMessages = async () => {
     if (!auth.token || !farmId || !canReadCommunication) return;
     try {
-      const response = await api.get("/crm/notifications", { params: { farm_id: farmId } });
-      setCrmMessages(response.data?.data || []);
+      const [legacyResponse, conversationResponse, broadcastResponse] = await Promise.all([
+        api.get("/crm/notifications", { params: { farm_id: farmId } }),
+        canReply
+          ? api.get("/crm/support-conversations", { params: { farm_id: farmId, status: "all" } })
+          : Promise.resolve({ data: { data: [] } }),
+        canNotify
+          ? api.get("/crm/broadcasts", { params: { farm_id: farmId } })
+          : Promise.resolve({ data: { data: [] } }),
+      ]);
+      setCrmMessages(legacyResponse.data?.data || []);
+      setSupportConversations(conversationResponse.data?.data || []);
+      setBroadcastHistory(broadcastResponse.data?.data || []);
     } catch (error) {
       showNotice(error.response?.data?.message || "Unable to load CRM messages.", "error");
+    }
+  };
+  const openSupportConversation = async (conversation) => {
+    try {
+      const response = await api.get(`/crm/support-conversations/${conversation.id}`);
+      setActiveSupportConversation(response.data?.data || null);
+      if ((conversation.unread_count || 0) > 0) {
+        await api.patch(`/crm/support-conversations/${conversation.id}/read`);
+        await loadCrmMessages();
+      }
+    } catch (error) {
+      showNotice(error.response?.data?.message || "Unable to open this support conversation.", "error");
+    }
+  };
+  const sendSupportReply = async (message) => {
+    if (!activeSupportConversation) return;
+    try {
+      await api.post(`/crm/support-conversations/${activeSupportConversation.id}/messages`, { message });
+      const response = await api.get(`/crm/support-conversations/${activeSupportConversation.id}`);
+      setActiveSupportConversation(response.data?.data || null);
+      await loadCrmMessages();
+      showNotice("Reply sent to the farm user.", "success");
+    } catch (error) {
+      showNotice(error.response?.data?.message || "Could not send your reply.", "error");
+    }
+  };
+  const updateSupportConversation = async (changes) => {
+    if (!activeSupportConversation) return;
+    try {
+      await api.patch(`/crm/support-conversations/${activeSupportConversation.id}`, changes);
+      const response = await api.get(`/crm/support-conversations/${activeSupportConversation.id}`);
+      setActiveSupportConversation(response.data?.data || null);
+      await loadCrmMessages();
+    } catch (error) {
+      showNotice(error.response?.data?.message || "Could not update the conversation.", "error");
     }
   };
   const loadSettingsData = async () => {
@@ -1031,15 +1080,23 @@ function App() {
   const sendNotification = async (event) => {
     event.preventDefault();
     if (!canNotify || !notification.message.trim()) return;
+    const broadcastRecipients = farmMembers.filter((member) =>
+      member.id !== profile?.id && (member.role === "farmOwner" || (["farmManager", "farmWorker"].includes(member.role) && !member.crm_role)),
+    );
+    const recipient = farmMembers.find((member) => String(member.id) === String(notification.recipient_id));
+    const audienceText = recipient ? `${recipient.name} only` : `${broadcastRecipients.length} farm members`;
+    if (!window.confirm(`Send this notification to ${audienceText}?`)) return;
     try {
       await api.post("/crm/notifications", {
         farm_id: Number(farmId),
+        kind: "broadcast",
         message: notification.message.trim(),
+        ...(notification.title.trim() ? { title: notification.title.trim() } : {}),
         ...(notification.recipient_id
           ? { recipient_id: Number(notification.recipient_id) }
           : {}),
       });
-      setNotification({ message: "", recipient_id: "" });
+      setNotification({ message: "", title: "", recipient_id: "" });
       await loadCrmMessages();
       showNotice("Notification sent.", "success");
     } catch (error) {
@@ -1241,7 +1298,7 @@ function App() {
         {activeSection === "tasks" && <TasksWorkspace tasks={globalTasks} staff={staff} loading={globalTasksLoading} error={globalTasksError} filters={taskFilters} setFilters={setTaskFilters} onRefresh={loadGlobalTasks} onToggle={updateGlobalTaskStatus} />}
         {activeSection === "customers" && ["farm-owners", "farm-managers", "farm-workers", "relationships"].includes(activeView) && <DirectoryView view={activeView} directory={directory} loading={directoryLoading} error={directoryError} onRefresh={loadDirectory} />}
         {activeSection === "customers" && activeView.startsWith("orders-") && <OrdersView status={activeView.replace("orders-", "")} orders={orders} loading={ordersLoading} error={ordersError} onRefresh={() => loadOrders(activeView.replace("orders-", ""))} />}
-        {activeSection === "communication" && <CommunicationWorkspace view={activeView} messages={crmMessages} staff={staff} notification={notification} setNotification={setNotification} onSubmit={sendNotification} onRefresh={loadCrmMessages} onReply={(message) => { setNotification((current) => ({ ...current, recipient_id: message.sender_id, message: `Hi ${message.sender_name || "there"}, ` })); setActiveView("communication-broadcast"); }} selected={selected} interactions={interactions} templates={communicationTemplates} onUseTemplate={addQuickAutomation} canNotify={canNotify} canReply={canReply} canRead={canReadCommunication} />}
+        {activeSection === "communication" && <CommunicationWorkspace view={activeView} conversations={supportConversations} selectedConversation={activeSupportConversation} onSelectConversation={openSupportConversation} onReply={sendSupportReply} onUpdateConversation={updateSupportConversation} staff={staff} farmMembers={farmMembers} history={broadcastHistory} notification={notification} setNotification={setNotification} onSubmit={sendNotification} selected={selected} interactions={interactions} templates={communicationTemplates} onUseTemplate={addQuickAutomation} canNotify={canNotify} canReply={canReply} canRead={canReadCommunication} />}
         {activeSection === "staff" && <StaffWorkspace view={activeView} members={staff} dashboard={dashboard} categories={staffCategories} policies={policies} policyForm={policyForm} setPolicyForm={setPolicyForm} onCreatePolicy={createPolicy} onArchivePolicy={archivePolicy} onEditPolicy={editPolicy} logs={staffLogs} onUpdate={updateStaff} onDelete={deleteStaff} isAdmin={isAdmin} memberForm={memberForm} setMemberForm={setMemberForm} onAdd={addStaff} onAddCategory={addStaffCategory} onDeleteCategory={deleteStaffCategory} />}
         {activeSection === "settings" && <SettingsWorkspace view={activeView} user={profile} profileForm={profileForm} setProfileForm={setProfileForm} onSaveProfile={saveProfileSettings} onAvatarChange={updateProfileAvatar} profileAvatar={profileAvatar} onLogout={logout} passwordForm={passwordForm} setPasswordForm={setPasswordForm} onChangePassword={changePassword} farm={settingsFarm} farmName={farmName} setFarmName={setFarmName} onSaveFarm={saveFarmSettings} canEditFarm={Boolean(settingsFarm)} members={farmMembers} canManageMembers={isAdmin || profile?.role === "farmOwner"} memberPermissions={memberPermissions} setMemberPermissions={setMemberPermissions} onSaveMember={saveMemberPermissions} notifications={farmNotifications} onRefreshNotifications={loadFarmNotifications} onReadNotification={markFarmNotificationRead} />}
         {activeSection === "finance" && (

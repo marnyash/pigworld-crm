@@ -719,15 +719,6 @@ function App() {
       showNotice(error.response?.data?.message || "Unable to load staff audit history.", "error");
     }
   };
-  const recordAuditEvent = async (action, module, metadata = {}) => {
-    if (!auth.token || !farmId) return;
-    try {
-      await api.post("/crm/audit-logs", { farm_id: Number(farmId), action, module, metadata });
-      if (isAdmin) await loadStaffLogs();
-    } catch {
-      showNotice("The change was saved, but its audit event could not be recorded.", "warning");
-    }
-  };
   const loadStaffCategories = async () => {
     if (!auth.token || !farmId) return;
     try {
@@ -742,6 +733,7 @@ function App() {
     try {
       const response = await api.post("/crm/staff-categories", { farm_id: Number(farmId), ...category });
       setStaffCategories((current) => [...current, response.data.data].sort((left, right) => left.name.localeCompare(right.name)));
+      if (isAdmin) await loadStaffLogs();
       showNotice("Staff category created.", "success");
     } catch (error) {
       showNotice(error.response?.data?.message || "Could not create staff category.", "error");
@@ -752,6 +744,7 @@ function App() {
     try {
       await api.delete(`/crm/staff-categories/${category.id}`);
       setStaffCategories((current) => current.filter((item) => item.id !== category.id));
+      if (isAdmin) await loadStaffLogs();
       showNotice("Staff category deleted.", "success");
     } catch (error) {
       showNotice(error.response?.data?.message || "Could not delete staff category.", "error");
@@ -1000,7 +993,7 @@ function App() {
           item.id === member.id ? response.data.data : item,
         ),
       );
-      await recordAuditEvent(`${data.closed ? "Suspended" : "Updated"} CRM account: ${member.name}`, "Staff", { user_id: member.id });
+      if (isAdmin) await loadStaffLogs();
       showNotice("CRM account updated.", "success");
     } catch (error) {
       showNotice(
@@ -1014,7 +1007,7 @@ function App() {
     try {
       await api.delete(`/crm/members/${member.id}`);
       setStaff((current) => current.filter((item) => item.id !== member.id));
-      await recordAuditEvent(`Deleted CRM account: ${member.name}`, "Staff", { user_id: member.id });
+      if (isAdmin) await loadStaffLogs();
       showNotice("CRM account deleted.", "success");
     } catch (error) {
       showNotice(
@@ -1031,7 +1024,7 @@ function App() {
         farm_id: Number(farmId),
       });
       setStaff((current) => [...current, response.data.data]);
-      await recordAuditEvent(`Added CRM account: ${memberForm.name}`, "Staff", { user_id: response.data.data.id });
+      if (isAdmin) await loadStaffLogs();
       setMemberForm({ name: "", email: "", password: "", crm_role: "finance" });
       showNotice("CRM account added.", "success");
     } catch (error) {
@@ -1059,12 +1052,12 @@ function App() {
       if (editingPolicyId) {
         const response = await api.put(`/crm/policies/${editingPolicyId}`, payload);
         setPolicies((current) => current.map((item) => item.id === response.data.data.id ? response.data.data : item));
-        await recordAuditEvent(`Updated staff policy: ${payload.title}`, "Staff policies", { policy_id: editingPolicyId });
+        if (isAdmin) await loadStaffLogs();
         showNotice("Staff policy updated.", "success");
       } else {
         const response = await api.post("/crm/policies", payload);
         setPolicies((current) => [response.data.data, ...current]);
-        await recordAuditEvent(`Published staff policy: ${payload.title}`, "Staff policies", { policy_id: response.data.data.id });
+        if (isAdmin) await loadStaffLogs();
         showNotice("Staff policy published.", "success");
       }
       setEditingPolicyId(null);
@@ -1090,7 +1083,7 @@ function App() {
     try {
       const response = await api.put(`/crm/policies/${policy.id}`, { ...policyPayload(policy), status: "archived" });
       setPolicies((current) => current.map((item) => item.id === policy.id ? response.data.data : item));
-      await recordAuditEvent(`Archived staff policy: ${policy.title}`, "Staff policies", { policy_id: policy.id });
+      if (isAdmin) await loadStaffLogs();
       showNotice(`${policy.title} archived.`, "success");
     } catch (error) {
       showNotice(error.response?.data?.message || "Could not archive this policy.", "error");

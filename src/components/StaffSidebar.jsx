@@ -19,14 +19,14 @@ export function StaffSidebar({ activeView, setActiveView, groups, setGroups, cat
       )}
       {isAdmin && <button className={`nav-item standalone-nav-item ${activeView === "staff-categories" ? "active" : ""}`} type="button" onClick={() => setActiveView("staff-categories")}><span>＋</span> Manage categories</button>}
       <button className="nav-group-toggle" type="button" onClick={() => setGroups((current) => ({ ...current, policies: !current.policies }))} aria-expanded={groups.policies}><span>▤</span><strong>Staff policies</strong><b>{groups.policies ? "−" : "+"}</b></button>
-      {groups.policies && <div className="nav-subgroup"><button className={`nav-item ${activeView === "policy-new" ? "active" : ""}`} type="button" onClick={() => setActiveView("policy-new")}><span>＋</span> New policy</button><button className={`nav-item ${activeView === "policy-existing" ? "active" : ""}`} type="button" onClick={() => setActiveView("policy-existing")}><span>•</span> Existing policies</button></div>}
-      <button
+      {groups.policies && <div className="nav-subgroup">{isAdmin && <button className={`nav-item ${activeView === "policy-new" ? "active" : ""}`} type="button" onClick={() => setActiveView("policy-new")}><span>＋</span> New policy</button>}<button className={`nav-item ${activeView === "policy-existing" ? "active" : ""}`} type="button" onClick={() => setActiveView("policy-existing")}><span>•</span> Existing policies</button></div>}
+      {isAdmin && <button
         className={`nav-item standalone-nav-item ${activeView === "staff-logs" ? "active" : ""}`}
         type="button"
         onClick={() => setActiveView("staff-logs")}
       >
         <span>◷</span> Staff logs
-      </button>
+      </button>}
     </nav>
   );
 }

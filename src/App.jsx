@@ -81,28 +81,10 @@ function App() {
     }
     return ["Home", "Customers", "Tasks", "Staff", "Finance", "Communication", "Settings"];
   };
-  const defaultPolicies = [
-    {
-      id: "default-policy-access",
-      title: "CRM access and page visibility policy",
-      category: "All staff",
-      audience: "all",
-      status: "active",
-      effectiveDate: "2026-09-23",
-      summary: "All CRM users must access only the pages assigned to their role and department.",
-      details: "This policy defines the expected operational boundaries for all CRM users. Leaders are responsible for confirming access is aligned with each team member's duties and department.",
-      notes: "Managers should review page access when a role changes and keep exceptions documented in staff logs.",
-      visiblePages: ["Home", "Customers", "Tasks", "Staff", "Finance", "Communication", "Settings"],
-      updatedBy: "Pig World Admin",
-      createdBy: "Pig World Admin",
-      accessMatrix: {
-        admin: ["Home", "Customers", "Tasks", "Staff", "Finance", "Communication", "Settings"],
-        finance: ["Home", "Finance", "Tasks", "Staff → Finance", "Settings"],
-        customer_service: ["Home", "Customers", "Communication", "Tasks", "Staff → Customer service", "Settings"],
-      },
-    },
-  ];
-  const [policies, setPolicies] = useState(defaultPolicies);
+  const [policies, setPolicies] = useState([]);
+  const [editingPolicyId, setEditingPolicyId] = useState(null);
+  const [policiesLoading, setPoliciesLoading] = useState(false);
+  const [importingCustomers, setImportingCustomers] = useState(false);
   const [policyForm, setPolicyForm] = useState({
     title: "",
     audience: "all",
@@ -344,22 +326,23 @@ function App() {
   };
   const importCustomersFromCsv = async (event) => {
     event.preventDefault();
+    if (importingCustomers) return;
     if (!importText.trim()) {
       return showNotice("Paste or upload customer rows before importing.", "error");
     }
     if (!farmId) {
       return showNotice("Your account is not linked to a farm.", "error");
     }
-    const rows = importText
-      .split(/\r?\n/)
-      .filter((line) => line.trim())
-      .map(parseCsvLine);
+    const sourceLines = importText.split(/\r?\n/).filter((line) => line.trim());
+    const rows = sourceLines.map(parseCsvLine);
     if (rows.length < 2) {
       return showNotice("Add at least a header row and one customer row.", "error");
     }
     const headers = rows[0].map((header) => header.toLowerCase().trim());
     const imported = [];
-    for (const row of rows.slice(1)) {
+    const failedLines = [];
+    setImportingCustomers(true);
+    for (const [index, row] of rows.slice(1).entries()) {
       const record = Object.fromEntries(headers.map((header, index) => [header, row[index] || ""]));
       const payload = {
         farm_id: Number(farmId),
@@ -376,20 +359,20 @@ function App() {
         const response = await api.post("/crm/customers", payload);
         imported.push(response.data.data);
       } catch (error) {
-        const fallbackCustomer = {
-          id: `csv-${Date.now()}-${Math.random().toString(16).slice(2)}`,
-          ...payload,
-        };
-        imported.push(fallbackCustomer);
-        showNotice(
-          error.response?.data?.message || "One or more rows were saved locally while syncing.",
-          "warning",
-        );
+        failedLines.push(sourceLines[index + 1]);
       }
     }
-    setCustomers((current) => [...imported, ...current]);
+    setImportingCustomers(false);
+    if (imported.length) {
+      setCustomers((current) => [...imported, ...current]);
+      setSelectedId(imported[0]?.id || null);
+    }
+    if (failedLines.length) {
+      setImportText([sourceLines[0], ...failedLines].join("\n"));
+      showNotice(`${imported.length} imported; ${failedLines.length} failed. Failed rows remain in the box so you can correct and retry them.`, imported.length ? "warning" : "error");
+      return;
+    }
     setImportText("");
-    setSelectedId(imported[0]?.id || null);
     showNotice(`Imported ${imported.length} customer records.`, "success");
   };
   const loadCustomers = async () => {
@@ -473,7 +456,6 @@ function App() {
     setFarmName(farms[0]?.name || "");
     setForm((current) => ({ ...current, farm_id: selectedFarmId }));
     setAuth((current) => ({ ...current, password: "", token, role, challengeId: "", destination: "", otp: "" }));
-    setStaffLogs([{ id: `login-${Date.now()}`, staff: user.name || user.email || identifier, action: "Signed in", module: "CRM", at: new Date().toISOString() }]);
     showNotice(`Welcome back. ${role.replace("_", " ")} workspace loaded.`, "success");
   };
   const login = async (event) => {
@@ -714,6 +696,36 @@ function App() {
         error.response?.data?.message || "Unable to load CRM accounts.",
         "error",
       );
+    }
+  };
+  const loadPolicies = async () => {
+    if (!auth.token || !farmId) return;
+    try {
+      setPoliciesLoading(true);
+      const response = await api.get("/crm/policies", { params: { farm_id: farmId } });
+      setPolicies(response.data?.data || []);
+    } catch (error) {
+      showNotice(error.response?.data?.message || "Unable to load staff policies.", "error");
+    } finally {
+      setPoliciesLoading(false);
+    }
+  };
+  const loadStaffLogs = async () => {
+    if (!auth.token || !farmId || !isAdmin) return;
+    try {
+      const response = await api.get("/crm/audit-logs", { params: { farm_id: farmId, per_page: 100 } });
+      setStaffLogs(response.data?.data || []);
+    } catch (error) {
+      showNotice(error.response?.data?.message || "Unable to load staff audit history.", "error");
+    }
+  };
+  const recordAuditEvent = async (action, module, metadata = {}) => {
+    if (!auth.token || !farmId) return;
+    try {
+      await api.post("/crm/audit-logs", { farm_id: Number(farmId), action, module, metadata });
+      if (isAdmin) await loadStaffLogs();
+    } catch {
+      showNotice("The change was saved, but its audit event could not be recorded.", "warning");
     }
   };
   const loadStaffCategories = async () => {
@@ -974,7 +986,7 @@ function App() {
       return loadCustomers();
     }
     if (activeSection === "tasks") return loadGlobalTasks();
-    if (activeSection === "staff") return Promise.all([loadStaff(), loadStaffCategories()]);
+    if (activeSection === "staff") return Promise.all([loadStaff(), loadStaffCategories(), loadPolicies(), loadStaffLogs()]);
     if (activeSection === "communication") return loadCrmMessages();
     if (activeSection === "settings") return activeView === "settings-notifications" ? loadFarmNotifications() : loadSettingsData();
     if (activeSection === "finance") return Promise.all([loadReport(), loadPlans()]);
@@ -988,7 +1000,7 @@ function App() {
           item.id === member.id ? response.data.data : item,
         ),
       );
-      setStaffLogs((current) => [{ id: `staff-${Date.now()}`, staff: auth.email || "Current user", action: `${data.closed ? "Suspended" : "Updated"} ${member.name}`, module: "Staff", at: new Date().toISOString() }, ...current]);
+      await recordAuditEvent(`${data.closed ? "Suspended" : "Updated"} CRM account: ${member.name}`, "Staff", { user_id: member.id });
       showNotice("CRM account updated.", "success");
     } catch (error) {
       showNotice(
@@ -1002,7 +1014,7 @@ function App() {
     try {
       await api.delete(`/crm/members/${member.id}`);
       setStaff((current) => current.filter((item) => item.id !== member.id));
-      setStaffLogs((current) => [{ id: `staff-${Date.now()}`, staff: auth.email || "Current user", action: `Deleted ${member.name}`, module: "Staff", at: new Date().toISOString() }, ...current]);
+      await recordAuditEvent(`Deleted CRM account: ${member.name}`, "Staff", { user_id: member.id });
       showNotice("CRM account deleted.", "success");
     } catch (error) {
       showNotice(
@@ -1019,33 +1031,48 @@ function App() {
         farm_id: Number(farmId),
       });
       setStaff((current) => [...current, response.data.data]);
-      setStaffLogs((current) => [{ id: `staff-${Date.now()}`, staff: auth.email || "Current user", action: `Added ${memberForm.name}`, module: "Staff", at: new Date().toISOString() }, ...current]);
+      await recordAuditEvent(`Added CRM account: ${memberForm.name}`, "Staff", { user_id: response.data.data.id });
       setMemberForm({ name: "", email: "", password: "", crm_role: "finance" });
       showNotice("CRM account added.", "success");
     } catch (error) {
       showNotice(error.response?.data?.message || "Could not add CRM account.", "error");
     }
   };
-  const createPolicy = (event) => {
+  const policyPayload = (policy) => ({
+    farm_id: Number(farmId),
+    title: policy.title.trim(),
+    category: policy.category || "All staff",
+    audience: policy.audience,
+    status: policy.status || "active",
+    effective_date: policy.effectiveDate,
+    summary: policy.summary.trim(),
+    details: (policy.details || "").trim(),
+    notes: (policy.notes || "").trim(),
+    visible_pages: policy.visiblePages?.length ? policy.visiblePages : buildDefaultPolicyPages(policy.audience),
+  });
+  const createPolicy = async (event) => {
     event.preventDefault();
-    const policy = {
-      id: `policy-${Date.now()}`,
-      ...policyForm,
-      title: policyForm.title.trim(),
-      summary: policyForm.summary.trim(),
-      details: (policyForm.details || policyForm.summary).trim(),
-      notes: (policyForm.notes || "Managers review role access when responsibilities change.").trim(),
-      visiblePages: policyForm.visiblePages?.length ? policyForm.visiblePages : buildDefaultPolicyPages(policyForm.audience),
-      accessMatrix: {
-        admin: ["Home", "Customers", "Tasks", "Staff", "Finance", "Communication", "Settings"],
-        finance: ["Home", "Finance", "Tasks", "Staff → Finance", "Settings"],
-        customer_service: ["Home", "Customers", "Communication", "Tasks", "Staff → Customer service", "Settings"],
-      },
-      createdBy: auth.email || "Current user",
-      updatedBy: auth.email || "Current user",
-    };
-    setPolicies((current) => [policy, ...current]);
-    setStaffLogs((current) => [{ id: `policy-${Date.now()}`, staff: auth.email || "Current user", action: `Published ${policy.title}`, module: "Staff policies", at: new Date().toISOString() }, ...current]);
+    if (!isAdmin) return showNotice("Only CRM admins can manage staff policies.", "error");
+    if (!farmId) return showNotice("Your account is not linked to a farm.", "error");
+    const payload = policyPayload(policyForm);
+    try {
+      if (editingPolicyId) {
+        const response = await api.put(`/crm/policies/${editingPolicyId}`, payload);
+        setPolicies((current) => current.map((item) => item.id === response.data.data.id ? response.data.data : item));
+        await recordAuditEvent(`Updated staff policy: ${payload.title}`, "Staff policies", { policy_id: editingPolicyId });
+        showNotice("Staff policy updated.", "success");
+      } else {
+        const response = await api.post("/crm/policies", payload);
+        setPolicies((current) => [response.data.data, ...current]);
+        await recordAuditEvent(`Published staff policy: ${payload.title}`, "Staff policies", { policy_id: response.data.data.id });
+        showNotice("Staff policy published.", "success");
+      }
+      setEditingPolicyId(null);
+      setActiveView("policy-existing");
+    } catch (error) {
+      showNotice(error.response?.data?.message || "Could not save staff policy.", "error");
+      return;
+    }
     setPolicyForm({
       title: "",
       audience: "all",
@@ -1057,13 +1084,21 @@ function App() {
       notes: "",
       visiblePages: buildDefaultPolicyPages("all"),
     });
-    showNotice("Staff policy published.", "success");
   };
-  const archivePolicy = (policy) => {
-    setPolicies((current) => current.map((item) => item.id === policy.id ? { ...item, status: "archived", updatedBy: auth.email || "Current user" } : item));
-    showNotice(`${policy.title} archived.`, "info");
+  const archivePolicy = async (policy) => {
+    if (!isAdmin) return showNotice("Only CRM admins can manage staff policies.", "error");
+    try {
+      const response = await api.put(`/crm/policies/${policy.id}`, { ...policyPayload(policy), status: "archived" });
+      setPolicies((current) => current.map((item) => item.id === policy.id ? response.data.data : item));
+      await recordAuditEvent(`Archived staff policy: ${policy.title}`, "Staff policies", { policy_id: policy.id });
+      showNotice(`${policy.title} archived.`, "success");
+    } catch (error) {
+      showNotice(error.response?.data?.message || "Could not archive this policy.", "error");
+    }
   };
   const editPolicy = (policy) => {
+    if (!isAdmin) return showNotice("Only CRM admins can edit staff policies.", "error");
+    setEditingPolicyId(policy.id);
     setPolicyForm({
       title: policy.title,
       audience: policy.audience,
@@ -1075,7 +1110,13 @@ function App() {
       notes: policy.notes || "",
       visiblePages: policy.visiblePages || buildDefaultPolicyPages(policy.audience),
     });
-    showNotice(`Loaded ${policy.title} for editing.`, "info");
+    setActiveView("policy-new");
+    showNotice(`Editing ${policy.title}.`, "info");
+  };
+  const cancelPolicyEdit = () => {
+    setEditingPolicyId(null);
+    setPolicyForm({ title: "", audience: "all", category: "All staff", status: "active", effectiveDate: "", summary: "", details: "", notes: "", visiblePages: buildDefaultPolicyPages("all") });
+    setActiveView("policy-existing");
   };
   const sendNotification = async (event) => {
     event.preventDefault();
@@ -1134,6 +1175,8 @@ function App() {
     if (auth.token) {
       loadStaff();
       loadStaffCategories();
+      loadPolicies();
+      loadStaffLogs();
       loadCrmMessages();
       loadDashboard();
       loadDirectory();
@@ -1156,6 +1199,8 @@ function App() {
       loadDashboard();
       loadStaff();
       loadStaffCategories();
+      loadPolicies();
+      loadStaffLogs();
       loadGlobalTasks();
       loadCrmMessages();
       loadDirectory();
@@ -1299,7 +1344,7 @@ function App() {
         {activeSection === "customers" && ["farm-owners", "farm-managers", "farm-workers", "relationships"].includes(activeView) && <DirectoryView view={activeView} directory={directory} loading={directoryLoading} error={directoryError} onRefresh={loadDirectory} />}
         {activeSection === "customers" && activeView.startsWith("orders-") && <OrdersView status={activeView.replace("orders-", "")} orders={orders} loading={ordersLoading} error={ordersError} onRefresh={() => loadOrders(activeView.replace("orders-", ""))} />}
         {activeSection === "communication" && <CommunicationWorkspace view={activeView} conversations={supportConversations} selectedConversation={activeSupportConversation} onSelectConversation={openSupportConversation} onReply={sendSupportReply} onUpdateConversation={updateSupportConversation} staff={staff} farmMembers={farmMembers} history={broadcastHistory} notification={notification} setNotification={setNotification} onSubmit={sendNotification} selected={selected} interactions={interactions} templates={communicationTemplates} onUseTemplate={addQuickAutomation} canNotify={canNotify} canReply={canReply} canRead={canReadCommunication} />}
-        {activeSection === "staff" && <StaffWorkspace view={activeView} members={staff} dashboard={dashboard} categories={staffCategories} policies={policies} policyForm={policyForm} setPolicyForm={setPolicyForm} onCreatePolicy={createPolicy} onArchivePolicy={archivePolicy} onEditPolicy={editPolicy} logs={staffLogs} onUpdate={updateStaff} onDelete={deleteStaff} isAdmin={isAdmin} memberForm={memberForm} setMemberForm={setMemberForm} onAdd={addStaff} onAddCategory={addStaffCategory} onDeleteCategory={deleteStaffCategory} />}
+        {activeSection === "staff" && <StaffWorkspace view={activeView} members={staff} dashboard={dashboard} categories={staffCategories} policies={policies} policiesLoading={policiesLoading} policyForm={policyForm} setPolicyForm={setPolicyForm} onCreatePolicy={createPolicy} onArchivePolicy={archivePolicy} onEditPolicy={editPolicy} onCancelPolicyEdit={cancelPolicyEdit} editingPolicy={Boolean(editingPolicyId)} logs={staffLogs} onUpdate={updateStaff} onDelete={deleteStaff} isAdmin={isAdmin} memberForm={memberForm} setMemberForm={setMemberForm} onAdd={addStaff} onAddCategory={addStaffCategory} onDeleteCategory={deleteStaffCategory} />}
         {activeSection === "settings" && <SettingsWorkspace view={activeView} user={profile} profileForm={profileForm} setProfileForm={setProfileForm} onSaveProfile={saveProfileSettings} onAvatarChange={updateProfileAvatar} profileAvatar={profileAvatar} onLogout={logout} passwordForm={passwordForm} setPasswordForm={setPasswordForm} onChangePassword={changePassword} farm={settingsFarm} farmName={farmName} setFarmName={setFarmName} onSaveFarm={saveFarmSettings} canEditFarm={Boolean(settingsFarm)} members={farmMembers} canManageMembers={isAdmin || profile?.role === "farmOwner"} memberPermissions={memberPermissions} setMemberPermissions={setMemberPermissions} onSaveMember={saveMemberPermissions} notifications={farmNotifications} onRefreshNotifications={loadFarmNotifications} onReadNotification={markFarmNotificationRead} />}
         {activeSection === "finance" && (
           <FinanceWorkspace
@@ -1371,7 +1416,7 @@ function App() {
               />
               <div className="form-actions">
                 <button className="ghost-button" type="button" onClick={() => setImportText("")}>Clear</button>
-                <button className="primary-button" type="submit">Import records</button>
+                <button className="primary-button" type="submit" disabled={importingCustomers}>{importingCustomers ? "Importing…" : "Import records"}</button>
               </div>
             </form>
           </section>

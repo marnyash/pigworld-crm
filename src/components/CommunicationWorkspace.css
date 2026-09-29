@@ -44,6 +44,18 @@
   font-size: 12px;
 }
 
+.communication-composer .template-active-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.template-active-toggle input {
+  width: 16px;
+  min-width: 16px;
+  margin: 0;
+}
+
 .conversation-detail {
   margin-top: 22px;
   padding-top: 18px;

@@ -1,3 +1,5 @@
+import { FarmNameChangeRequests } from "./FarmNameChangeRequests";
+
 const permissionOptions = [
   ["viewDashboard", "View dashboard"],
   ["manageHerd", "Manage herd"],
@@ -19,7 +21,7 @@ function SecurityView({ passwordForm, setPasswordForm, onSave }) {
 
 function FarmView({ farm, farmName, setFarmName, onSave, canEdit }) {
   if (!farm) return <section className="panel-card settings-workspace-panel"><div className="state-message">No farm workspace is linked to this account.</div></section>;
-  return <section className="panel-card settings-workspace-panel"><div className="panel-heading"><div><div className="eyebrow">Workspace</div><h2>Farm workspace</h2></div><span>Farm #{farm.id}</span></div><form className="settings-form" onSubmit={onSave}><label>Farm name<input required disabled={!canEdit} value={farmName} onChange={(event) => setFarmName(event.target.value)} /></label>{canEdit && <button className="primary-button" type="submit">Save farm name</button>}</form><div className="settings-detail-grid"><div><span>Location</span><strong>{farm.location || "Not provided"}</strong></div><div><span>Mother pigs</span><strong>{farm.mother_pig_count ?? 0}</strong></div><div><span>Subscription</span><strong>{farm.subscription_plan || "No active plan"}</strong></div><div><span>Invite code</span><strong>{farm.invite_code || "Not available"}</strong></div></div><p className="settings-note">Only the farm name can currently be changed from this workspace.</p></section>;
+  return <section className="panel-card settings-workspace-panel"><div className="panel-heading"><div><div className="eyebrow">Workspace</div><h2>Farm workspace</h2></div><span>Farm #{farm.id}</span></div><div className="settings-detail-grid"><div><span>Farm name</span><strong>{farm.name || farmName}</strong></div><div><span>Location</span><strong>{farm.location || "Not provided"}</strong></div><div><span>Mother pigs</span><strong>{farm.mother_pig_count ?? 0}</strong></div><div><span>Subscription</span><strong>{farm.subscription_plan || "No active plan"}</strong></div><div><span>Invite code</span><strong>{farm.invite_code || "Not available"}</strong></div></div><p className="settings-note">Farm names are changed only by reviewing a farm owner's request in Farm name approvals.</p></section>;
 }
 
 function MembersView({ members, canManage, memberPermissions, setMemberPermissions, onSave }) {
@@ -31,6 +33,7 @@ function NotificationsView({ notifications, onRefresh, onRead }) {
 }
 
 export function SettingsWorkspace({ view, user, profileForm, setProfileForm, onSaveProfile, onAvatarChange, profileAvatar, onLogout, passwordForm, setPasswordForm, onChangePassword, farm, farmName, setFarmName, onSaveFarm, canEditFarm, members, canManageMembers, memberPermissions, setMemberPermissions, onSaveMember, notifications, onRefreshNotifications, onReadNotification }) {
+  if (view === "settings-name-approvals") return <FarmNameChangeRequests />;
   if (view === "settings-security") return <SecurityView passwordForm={passwordForm} setPasswordForm={setPasswordForm} onSave={onChangePassword} />;
   if (view === "settings-farm") return <FarmView farm={farm} farmName={farmName} setFarmName={setFarmName} onSave={onSaveFarm} canEdit={canEditFarm} />;
   if (view === "settings-members") return <MembersView members={members} canManage={canManageMembers} memberPermissions={memberPermissions} setMemberPermissions={setMemberPermissions} onSave={onSaveMember} />;

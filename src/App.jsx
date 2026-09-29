@@ -12,6 +12,7 @@ import { FinanceWorkspace } from "./components/FinanceWorkspace";
 import { Login } from "./components/Login";
 import { SplashScreen } from "./components/SplashScreen";
 import { CustomerForm } from "./components/CustomerForm";
+import { FarmOwnerProspects } from "./components/FarmOwnerProspects";
 import { TaskPanel } from "./components/TaskPanel";
 import { TasksWorkspace } from "./components/TasksWorkspace";
 import { StaffSidebar } from "./components/StaffSidebar";
@@ -40,12 +41,6 @@ const segmentDefinitions = [
   { id: "priority", label: "Priority buyers", description: "Qualified prospects with strong conversion potential", predicate: (customer) => customer.type === "buyer" || customer.status === "qualified" },
   { id: "retained", label: "Retained accounts", description: "Won opportunities and active accounts", predicate: (customer) => customer.status === "won" },
   { id: "at-risk", label: "At risk", description: "Leads that need attention before they go cold", predicate: (customer) => customer.status === "lost" || customer.status === "contacted" },
-];
-const communicationTemplates = [
-  { label: "Welcome message", type: "message", copy: "Welcome to Pig World. We are ready to help you with pricing, delivery, and herd planning." },
-  { label: "Follow-up nudge", type: "email", copy: "Following up on our last conversation. Please confirm the best time for a call or quote review." },
-  { label: "Delivery check", type: "call", copy: "Checking in on the delivery schedule and any remaining questions before the next order." },
-  { label: "Win confirmation", type: "note", copy: "Thanks for choosing Pig World. We’ve confirmed the next steps for onboarding and account activation." },
 ];
 function App() {
   const [customers, setCustomers] = useState([]);
@@ -108,6 +103,7 @@ function App() {
   const [settingsFarm, setSettingsFarm] = useState(null);
   const [farmName, setFarmName] = useState("");
   const [farmMembers, setFarmMembers] = useState([]);
+  const [globalFarms, setGlobalFarms] = useState([]);
   const [memberPermissions, setMemberPermissions] = useState({});
   const [farmNotifications, setFarmNotifications] = useState([]);
   const [auth, setAuth] = useState(() => ({
@@ -126,10 +122,12 @@ function App() {
   const canReply = isAdmin || crmRole === "customer_support";
   const canNotify = isAdmin || crmRole === "customer_support";
   const canReadCommunication = isAdmin || crmRole === "finance" || crmRole === "customer_support";
+  const isGlobalAdmin = Boolean(profile?.is_global_crm_admin);
   const [notification, setNotification] = useState({
     message: "",
     title: "",
     recipient_id: "",
+    farm_id: "",
   });
   const [importText, setImportText] = useState("");
   const [activeSection, setActiveSection] = useState("home");
@@ -782,15 +780,16 @@ function App() {
     }
   };
   const loadCrmMessages = async () => {
-    if (!auth.token || !farmId || !canReadCommunication) return;
+    const messageFarmId = farmId || (isGlobalAdmin ? notification.farm_id || globalFarms[0]?.id : "");
+    if (!auth.token || !messageFarmId || !canReadCommunication) return;
     try {
       const [legacyResponse, conversationResponse, broadcastResponse] = await Promise.all([
-        api.get("/crm/notifications", { params: { farm_id: farmId } }),
-        canReply
-          ? api.get("/crm/support-conversations", { params: { farm_id: farmId, status: "all" } })
+        api.get("/crm/notifications", { params: { farm_id: messageFarmId } }),
+        canReply && !isGlobalAdmin
+          ? api.get("/crm/support-conversations", { params: { farm_id: messageFarmId, status: "all" } })
           : Promise.resolve({ data: { data: [] } }),
         canNotify
-          ? api.get("/crm/broadcasts", { params: { farm_id: farmId } })
+          ? api.get("/crm/broadcasts", { params: { farm_id: messageFarmId } })
           : Promise.resolve({ data: { data: [] } }),
       ]);
       setCrmMessages(legacyResponse.data?.data || []);
@@ -798,6 +797,17 @@ function App() {
       setBroadcastHistory(broadcastResponse.data?.data || []);
     } catch (error) {
       showNotice(error.response?.data?.message || "Unable to load CRM messages.", "error");
+    }
+  };
+  const loadGlobalFarms = async () => {
+    if (!auth.token || !isGlobalAdmin) return;
+    try {
+      const response = await api.get("/crm/admin/farms");
+      const farms = response.data?.data || [];
+      setGlobalFarms(farms);
+      setNotification((current) => ({ ...current, farm_id: current.farm_id || String(farms[0]?.id || "") }));
+    } catch (error) {
+      showNotice(error.response?.data?.message || "Unable to load farms for central CRM administration.", "error");
     }
   };
   const openSupportConversation = async (conversation) => {
@@ -1114,15 +1124,20 @@ function App() {
   const sendNotification = async (event) => {
     event.preventDefault();
     if (!canNotify || !notification.message.trim()) return;
-    const broadcastRecipients = farmMembers.filter((member) =>
+    const targetFarmId = notification.farm_id || farmId;
+    const targetMembers = isGlobalAdmin
+      ? globalFarms.find((farm) => String(farm.id) === String(targetFarmId))?.members || []
+      : farmMembers;
+    if (!targetFarmId) return showNotice("Select a farm before sending.", "error");
+    const broadcastRecipients = targetMembers.filter((member) =>
       member.id !== profile?.id && (member.role === "farmOwner" || (["farmManager", "farmWorker"].includes(member.role) && !member.crm_role)),
     );
-    const recipient = farmMembers.find((member) => String(member.id) === String(notification.recipient_id));
+    const recipient = targetMembers.find((member) => String(member.id) === String(notification.recipient_id));
     const audienceText = recipient ? `${recipient.name} only` : `${broadcastRecipients.length} farm members`;
     if (!window.confirm(`Send this notification to ${audienceText}?`)) return;
     try {
       await api.post("/crm/notifications", {
-        farm_id: Number(farmId),
+        farm_id: Number(targetFarmId),
         kind: "broadcast",
         message: notification.message.trim(),
         ...(notification.title.trim() ? { title: notification.title.trim() } : {}),
@@ -1130,7 +1145,7 @@ function App() {
           ? { recipient_id: Number(notification.recipient_id) }
           : {}),
       });
-      setNotification({ message: "", title: "", recipient_id: "" });
+      setNotification((current) => ({ message: "", title: "", recipient_id: "", farm_id: current.farm_id }));
       await loadCrmMessages();
       showNotice("Notification sent.", "success");
     } catch (error) {
@@ -1139,6 +1154,17 @@ function App() {
         "error",
       );
     }
+  };
+  const useNotificationTemplate = (template) => {
+    setNotification((current) => ({
+      ...current,
+      title: template.title,
+      message: template.message,
+      recipient_id: "",
+      farm_id: current.farm_id || String(globalFarms[0]?.id || farmId || ""),
+    }));
+    setActiveSection("communication");
+    setActiveView("communication-broadcast");
   };
   const savePlan = async (event) => {
     event.preventDefault();
@@ -1166,18 +1192,23 @@ function App() {
   };
   useEffect(() => {
     if (auth.token) {
+      loadGlobalFarms();
       loadStaff();
       loadStaffCategories();
       loadPolicies();
       loadStaffLogs();
-      loadCrmMessages();
       loadDashboard();
       loadDirectory();
       loadSettingsData();
       loadReport();
       loadGlobalTasks();
     }
-  }, [auth.token, farmId, canReadCommunication]);
+  }, [auth.token, farmId, canReadCommunication, isGlobalAdmin]);
+
+  useEffect(() => {
+    if (!auth.token || !canReadCommunication) return;
+    loadCrmMessages();
+  }, [auth.token, farmId, canReadCommunication, isGlobalAdmin, globalFarms.length, notification.farm_id]);
 
   useEffect(() => {
     if (activeSection !== "tasks") return undefined;
@@ -1246,12 +1277,13 @@ function App() {
             setActiveView={setActiveView}
             customerGroups={customerGroups}
             setCustomerGroups={setCustomerGroups}
+            isGlobalAdmin={isGlobalAdmin}
           />
         )}
         {activeSection === "staff" && <StaffSidebar activeView={activeView} setActiveView={setActiveView} groups={staffGroups} setGroups={setStaffGroups} categories={staffCategories} isAdmin={isAdmin} />}
         {activeSection === "finance" && <FinanceSidebar activeView={activeView} setActiveView={setActiveView} />}
         {activeSection === "communication" && <CommunicationSidebar activeView={activeView} setActiveView={setActiveView} />}
-        {activeSection === "settings" && <SettingsSidebar activeView={activeView} setActiveView={setActiveView} />}
+        {activeSection === "settings" && <SettingsSidebar activeView={activeView} setActiveView={setActiveView} isAdmin={isAdmin} />}
         <div className="sidebar-footer">
           {profileAvatar ? <img className="profile-avatar-image" src={profileAvatar} alt={`${profile?.name || "User"} profile`} /> : <span className="profile-avatar-fallback">{(profile?.name || auth.email || "U").slice(0, 1).toUpperCase()}</span>}
           <div>
@@ -1287,6 +1319,8 @@ function App() {
                       ? "Password and security"
                       : activeView === "settings-farm"
                         ? "Farm workspace"
+                        : activeView === "settings-name-approvals"
+                          ? "Farm name approvals"
                         : activeView === "settings-members"
                           ? "Members and permissions"
                           : activeView === "settings-notifications"
@@ -1310,14 +1344,16 @@ function App() {
                       : activeView === "communication-templates"
                         ? "Communication templates"
                         : "Communication inbox"
-                  : "Customers"}
+                  : activeView === "farm-owner-prospects"
+                    ? "Farm-owner prospects"
+                    : "Customers"}
             </h1>
           </div>
           <div className="top-actions">
             {activeSection !== "home" && <button className="ghost-button" type="button" onClick={refreshCurrentView}>
               ↻ Refresh {activeSection}
             </button>}
-            {activeSection === "customers" && canWriteCustomers && <button
+            {activeSection === "customers" && activeView === "customers" && canWriteCustomers && <button
               className="primary-button"
               onClick={() => {
                 setEditing(false);
@@ -1335,8 +1371,9 @@ function App() {
         {activeSection === "home" && <HomeDashboard dashboard={dashboard} loading={dashboardLoading} error={dashboardError} onRefresh={loadDashboard} onOpen={selectSection} onOpenStatus={(status) => { setFilters((current) => ({ ...current, search: "", status, page: 1 })); selectSection("customers"); }} />}
         {activeSection === "tasks" && <TasksWorkspace tasks={globalTasks} staff={staff} loading={globalTasksLoading} error={globalTasksError} filters={taskFilters} setFilters={setTaskFilters} onRefresh={loadGlobalTasks} onToggle={updateGlobalTaskStatus} />}
         {activeSection === "customers" && ["farm-owners", "farm-managers", "farm-workers", "relationships"].includes(activeView) && <DirectoryView view={activeView} directory={directory} loading={directoryLoading} error={directoryError} onRefresh={loadDirectory} />}
+        {activeSection === "customers" && activeView === "farm-owner-prospects" && isGlobalAdmin && <FarmOwnerProspects />}
         {activeSection === "customers" && activeView.startsWith("orders-") && <OrdersView status={activeView.replace("orders-", "")} orders={orders} loading={ordersLoading} error={ordersError} onRefresh={() => loadOrders(activeView.replace("orders-", ""))} />}
-        {activeSection === "communication" && <CommunicationWorkspace view={activeView} conversations={supportConversations} selectedConversation={activeSupportConversation} onSelectConversation={openSupportConversation} onReply={sendSupportReply} onUpdateConversation={updateSupportConversation} staff={staff} farmMembers={farmMembers} history={broadcastHistory} notification={notification} setNotification={setNotification} onSubmit={sendNotification} selected={selected} interactions={interactions} templates={communicationTemplates} onUseTemplate={addQuickAutomation} canNotify={canNotify} canReply={canReply} canRead={canReadCommunication} />}
+        {activeSection === "communication" && <CommunicationWorkspace view={activeView} conversations={supportConversations} selectedConversation={activeSupportConversation} onSelectConversation={openSupportConversation} onReply={sendSupportReply} onUpdateConversation={updateSupportConversation} staff={staff} farmMembers={farmMembers} globalFarms={globalFarms} isGlobalAdmin={isGlobalAdmin} farmId={farmId} history={broadcastHistory} notification={notification} setNotification={setNotification} onSubmit={sendNotification} onUseTemplate={useNotificationTemplate} selected={selected} interactions={interactions} canNotify={canNotify} canReply={canReply} canRead={canReadCommunication} />}
         {activeSection === "staff" && <StaffWorkspace view={activeView} members={staff} dashboard={dashboard} categories={staffCategories} policies={policies} policiesLoading={policiesLoading} policyForm={policyForm} setPolicyForm={setPolicyForm} onCreatePolicy={createPolicy} onArchivePolicy={archivePolicy} onEditPolicy={editPolicy} onCancelPolicyEdit={cancelPolicyEdit} editingPolicy={Boolean(editingPolicyId)} logs={staffLogs} onUpdate={updateStaff} onDelete={deleteStaff} isAdmin={isAdmin} memberForm={memberForm} setMemberForm={setMemberForm} onAdd={addStaff} onAddCategory={addStaffCategory} onDeleteCategory={deleteStaffCategory} />}
         {activeSection === "settings" && <SettingsWorkspace view={activeView} user={profile} profileForm={profileForm} setProfileForm={setProfileForm} onSaveProfile={saveProfileSettings} onAvatarChange={updateProfileAvatar} profileAvatar={profileAvatar} onLogout={logout} passwordForm={passwordForm} setPasswordForm={setPasswordForm} onChangePassword={changePassword} farm={settingsFarm} farmName={farmName} setFarmName={setFarmName} onSaveFarm={saveFarmSettings} canEditFarm={Boolean(settingsFarm)} members={farmMembers} canManageMembers={isAdmin || profile?.role === "farmOwner"} memberPermissions={memberPermissions} setMemberPermissions={setMemberPermissions} onSaveMember={saveMemberPermissions} notifications={farmNotifications} onRefreshNotifications={loadFarmNotifications} onReadNotification={markFarmNotificationRead} />}
         {activeSection === "finance" && (

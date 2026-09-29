@@ -5,6 +5,7 @@ export function CustomerSidebar({
   setActiveView,
   customerGroups,
   setCustomerGroups,
+  isGlobalAdmin,
 }) {
   return (
     <nav className="side-nav customer-side-nav" aria-label="Customer navigation">
@@ -37,6 +38,14 @@ export function CustomerSidebar({
           ))}
         </div>
       )}
+
+      {isGlobalAdmin && <button
+        className={`nav-item standalone-nav-item ${activeView === "farm-owner-prospects" ? "active" : ""}`}
+        type="button"
+        onClick={() => setActiveView("farm-owner-prospects")}
+      >
+        <span>•</span> Farm-owner prospects
+      </button>}
 
       <button
         className={`nav-item standalone-nav-item ${activeView === "segments" ? "active" : ""}`}

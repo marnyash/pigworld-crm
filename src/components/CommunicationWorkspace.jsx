@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import "./CommunicationWorkspace.css";
+import { NotificationTemplates } from "./NotificationTemplates";
 
 const formatTime = (value) => value ? new Date(value).toLocaleString() : "";
 
@@ -57,13 +58,16 @@ function InboxView({ conversations, selectedConversation, onSelectConversation, 
   </section>;
 }
 
-function BroadcastView({ farmMembers, history, notification, setNotification, onSubmit, canNotify }) {
-  const recipients = useMemo(() => farmMembers.filter((member) => ["farmOwner", "farmManager", "farmWorker"].includes(member.role)), [farmMembers]);
+function BroadcastView({ farmMembers, globalFarms, isGlobalAdmin, farmId, history, notification, setNotification, onSubmit, canNotify }) {
+  const selectedFarm = globalFarms.find((farm) => String(farm.id) === String(notification.farm_id || farmId));
+  const members = isGlobalAdmin ? (selectedFarm?.members || []) : farmMembers;
+  const recipients = useMemo(() => members.filter((member) => ["farmOwner", "farmManager", "farmWorker"].includes(member.role)), [members]);
   const recipientCount = notification.recipient_id ? 1 : recipients.length;
   if (!canNotify) return <section className="panel-card communication-workspace-panel"><div className="eyebrow">Broadcast</div><h2>Read-only communication access</h2><p className="communication-muted">Your role can read communication messages but cannot send broadcasts.</p></section>;
   return <section className="panel-card communication-workspace-panel">
     <div className="panel-heading"><div><div className="eyebrow">Announcements</div><h2>Send a broadcast</h2></div><span>Not a support reply</span></div>
     <form className="communication-composer" onSubmit={onSubmit}>
+      {isGlobalAdmin && <label>Farm<select required value={notification.farm_id || ""} onChange={(event) => setNotification((current) => ({ ...current, farm_id: event.target.value, recipient_id: "" }))}><option value="">Select a farm</option>{globalFarms.map((farm) => <option key={farm.id} value={farm.id}>{farm.name}</option>)}</select></label>}
       <label>Audience <select value={notification.recipient_id} onChange={(event) => setNotification((current) => ({ ...current, recipient_id: event.target.value }))}>
         <option value="">Everyone in this farm ({recipients.length})</option>{recipients.map((member) => <option key={member.id} value={member.id}>{member.name} · {member.role}</option>)}
       </select></label>
@@ -81,14 +85,32 @@ function ActivityView({ selected, interactions, canReply }) {
   return <section className="panel-card communication-workspace-panel"><div className="panel-heading"><div><div className="eyebrow">Customer activity</div><h2>{selected ? `${selected.name} timeline` : "Customer communication"}</h2></div><span>{selected ? "Selected from Customers" : "No customer selected"}</span></div>{!selected ? <div className="state-message">Select a customer in the Customers workspace to review communication activity.</div> : interactions.length === 0 ? <div className="state-message">No customer activity recorded yet.</div> : <div className="timeline">{interactions.map((item) => <div className="timeline-item" key={item.id || `${item.type}-${item.occurred_at}`}><span className="timeline-icon">{item.type === "call" ? "⌕" : item.type === "email" ? "@" : "✦"}</span><div><strong>{item.type[0].toUpperCase() + item.type.slice(1)}</strong><span>{item.notes || "No notes added"}</span></div><time>{new Date(item.occurred_at).toLocaleString()}</time></div>)}</div>}{selected && !canReply && <p className="communication-muted">Your role can review activity but cannot add customer replies.</p>}</section>;
 }
 
-function TemplatesView({ templates, onUse, hasCustomer }) {
-  return <section className="panel-card communication-workspace-panel"><div className="panel-heading"><div><div className="eyebrow">Quick actions</div><h2>Communication templates</h2></div><span>Save a customer follow-up</span></div>{!hasCustomer && <div className="state-message">Select a customer in the Customers workspace before using a template.</div>}<div className="automation-grid">{templates.map((template) => <button key={template.label} type="button" className="automation-card" disabled={!hasCustomer} onClick={() => onUse(template)}><strong>{template.label}</strong><span>{template.copy}</span></button>)}</div></section>;
-}
-
-export function CommunicationWorkspace({ view, conversations, selectedConversation, onSelectConversation, onReply, onUpdateConversation, staff, farmMembers, history, notification, setNotification, onSubmit, selected, interactions, templates, onUseTemplate, canNotify, canReply, canRead }) {
+export function CommunicationWorkspace({
+  view,
+  conversations,
+  selectedConversation,
+  onSelectConversation,
+  onReply,
+  onUpdateConversation,
+  staff,
+  farmMembers,
+  globalFarms,
+  isGlobalAdmin,
+  farmId,
+  history,
+  notification,
+  setNotification,
+  onSubmit,
+  onUseTemplate,
+  selected,
+  interactions,
+  canNotify,
+  canReply,
+  canRead,
+}) {
   if (!canRead) return <section className="panel-card communication-workspace-panel"><div className="eyebrow">Communication</div><h2>Access restricted</h2><p className="communication-muted">Your role does not have access to CRM communication.</p></section>;
-  if (view === "communication-broadcast") return <BroadcastView farmMembers={farmMembers} history={history} notification={notification} setNotification={setNotification} onSubmit={onSubmit} canNotify={canNotify} />;
+  if (view === "communication-broadcast") return <BroadcastView farmMembers={farmMembers} globalFarms={globalFarms} isGlobalAdmin={isGlobalAdmin} farmId={farmId} history={history} notification={notification} setNotification={setNotification} onSubmit={onSubmit} canNotify={canNotify} />;
   if (view === "communication-activity") return <ActivityView selected={selected} interactions={interactions} canReply={canReply} />;
-  if (view === "communication-templates") return <TemplatesView templates={templates} onUse={onUseTemplate} hasCustomer={Boolean(selected)} />;
+  if (view === "communication-templates") return <NotificationTemplates onUse={onUseTemplate} isGlobalAdmin={isGlobalAdmin} />;
   return <InboxView conversations={conversations} selectedConversation={selectedConversation} onSelectConversation={onSelectConversation} onReply={onReply} onUpdateConversation={onUpdateConversation} staff={staff} />;
 }

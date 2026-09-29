@@ -6,11 +6,14 @@ const settingsLinks = [
   { id: "settings-notifications", label: "Notifications", icon: "✦" },
 ];
 
-export function SettingsSidebar({ activeView, setActiveView }) {
+export function SettingsSidebar({ activeView, setActiveView, isAdmin }) {
+  const links = isAdmin
+    ? [...settingsLinks, { id: "settings-name-approvals", label: "Farm name approvals", icon: "✓" }]
+    : settingsLinks;
   return (
     <nav className="side-nav settings-side-nav" aria-label="Settings navigation">
       <div className="side-caption">Workspace settings</div>
-      {settingsLinks.map((link) => (
+      {links.map((link) => (
         <button key={link.id} className={`nav-item ${activeView === link.id ? "active" : ""}`} type="button" onClick={() => setActiveView(link.id)}>
           <span>{link.icon}</span> {link.label}
         </button>

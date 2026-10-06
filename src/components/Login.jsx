@@ -1,11 +1,12 @@
 import { useState } from "react";
 import "../auth-improvements.css";
 
-export function Login({ auth, setAuth, onSubmit, onVerifyOtp, onForgotPassword, notice }) {
+export function Login({ auth, setAuth, onSubmit, onVerifyOtp, onResendOtp, onForgotPassword, notice }) {
   const [showPassword, setShowPassword] = useState(false);
   const [forgotMode, setForgotMode] = useState(false);
   const [resetSent, setResetSent] = useState(false);
   const [sendingReset, setSendingReset] = useState(false);
+  const [resendingOtp, setResendingOtp] = useState(false);
   const submit = async (event) => {
     if (!forgotMode) return onSubmit(event);
     event.preventDefault();
@@ -18,6 +19,15 @@ export function Login({ auth, setAuth, onSubmit, onVerifyOtp, onForgotPassword, 
       // The shared notice explains the delivery error; keep the form editable.
     } finally {
       setSendingReset(false);
+    }
+  };
+  const resendOtp = async () => {
+    if (resendingOtp) return;
+    setResendingOtp(true);
+    try {
+      await onResendOtp();
+    } finally {
+      setResendingOtp(false);
     }
   };
   return (
@@ -93,12 +103,15 @@ export function Login({ auth, setAuth, onSubmit, onVerifyOtp, onForgotPassword, 
                 maxLength="6"
                 required
                 value={auth.otp || ""}
-                onChange={(event) => setAuth((current) => ({ ...current, otp: event.target.value.replace(/\\D/g, "").slice(0, 6) }))}
+                onChange={(event) => setAuth((current) => ({ ...current, otp: event.target.value.replace(/\D/g, "").slice(0, 6) }))}
                 placeholder="123456"
               />
             </label>
-            <button className="primary-button" type="button" onClick={() => onVerifyOtp(auth.otp || "")}>
+            <button className="primary-button" type="button" disabled={!/^\d{6}$/.test(auth.otp || "")} onClick={() => onVerifyOtp(auth.otp || "")}>
               Verify and sign in <span>→</span>
+            </button>
+            <button className="ghost-button" type="button" disabled={resendingOtp} onClick={resendOtp}>
+              {resendingOtp ? "Sending…" : "Resend code"}
             </button>
             <button className="ghost-button" type="button" onClick={() => setAuth((current) => ({ ...current, challengeId: "", destination: "", otp: "" }))}>
               Back to sign in

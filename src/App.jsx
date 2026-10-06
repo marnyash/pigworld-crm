@@ -563,6 +563,10 @@ function App() {
     }
   };
   const verifyLoginOtp = async (code) => {
+    if (!auth.challengeId || !/^\d{6}$/.test(code || "")) {
+      showNotice("Enter the six-digit code sent to your email.", "error");
+      return;
+    }
     try {
       const response = await api.post("/auth/verify-otp", {
         challenge_id: auth.challengeId,
@@ -571,7 +575,34 @@ function App() {
       establishSession(response, auth.email, auth.rememberMe);
     } catch (error) {
       showNotice(
-        error.response?.data?.message || "That code is invalid or expired. Request a new sign-in code.",
+        error.response?.data?.errors?.code?.[0] ||
+          error.response?.data?.message ||
+          "That code is invalid or expired. Request a new sign-in code.",
+        "error",
+      );
+    }
+  };
+  const resendLoginOtp = async () => {
+    if (!auth.challengeId) {
+      showNotice("Sign in again to request a new verification code.", "error");
+      return;
+    }
+    try {
+      const response = await api.post("/auth/resend-otp", {
+        challenge_id: auth.challengeId,
+      });
+      setAuth((current) => ({
+        ...current,
+        challengeId: response.data.challenge_id,
+        destination: response.data.destination || current.destination,
+        otp: "",
+      }));
+      showNotice("A new six-digit sign-in code was sent to your email.", "success");
+    } catch (error) {
+      showNotice(
+        error.response?.data?.errors?.challenge_id?.[0] ||
+          error.response?.data?.message ||
+          "Could not resend the code. Sign in again and try once more.",
         "error",
       );
     }
@@ -1394,7 +1425,7 @@ function App() {
 
   if (!auth.token)
     return (
-      <Login auth={auth} setAuth={setAuth} onSubmit={login} onVerifyOtp={verifyLoginOtp} onForgotPassword={requestPasswordReset} notice={notice} />
+      <Login auth={auth} setAuth={setAuth} onSubmit={login} onVerifyOtp={verifyLoginOtp} onResendOtp={resendLoginOtp} onForgotPassword={requestPasswordReset} notice={notice} />
     );
   return (
     <div className={`app-shell ${activeSection === "home" ? "home-shell" : ""}`}>

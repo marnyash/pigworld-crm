@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
-import { api, clearSession, ROLE_KEY, saveProfile, saveSession, TOKEN_KEY } from "./api";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { api, clearSession, FARM_KEY, ROLE_KEY, saveProfile, saveSession, TOKEN_KEY } from "./api";
 import "./customer-workspace.css";
+import "./farm-context.css";
 import { AdminNavbar } from "./components/AdminNavbar";
 import { CustomerSidebar } from "./components/CustomerSidebar";
 import { HomeDashboard } from "./components/HomeDashboard";
@@ -15,12 +16,14 @@ import { CustomerForm } from "./components/CustomerForm";
 import { FarmOwnerProspects } from "./components/FarmOwnerProspects";
 import { TaskPanel } from "./components/TaskPanel";
 import { TasksWorkspace } from "./components/TasksWorkspace";
+import { FarmOperationsTasks } from "./components/FarmOperationsTasks";
 import { StaffSidebar } from "./components/StaffSidebar";
 import { StaffWorkspace } from "./components/StaffWorkspace";
 import { CommunicationSidebar } from "./components/CommunicationSidebar";
 import { CommunicationWorkspace } from "./components/CommunicationWorkspace";
 import { SettingsSidebar } from "./components/SettingsSidebar";
 import { SettingsWorkspace } from "./components/SettingsWorkspace";
+import { FarmOperationsWorkspace } from "./components/FarmOperationsWorkspace";
 const emptyCustomer = {
   farm_id: "",
   assigned_user_id: "",
@@ -49,6 +52,10 @@ function App() {
   const [timeline, setTimeline] = useState([]);
   const [tasks, setTasks] = useState([]);
   const [globalTasks, setGlobalTasks] = useState([]);
+  const [farmTasks, setFarmTasks] = useState([]);
+  const [farmTasksLoading, setFarmTasksLoading] = useState(false);
+  const [farmTasksError, setFarmTasksError] = useState("");
+  const farmTasksRequest = useRef(0);
   const [globalTasksLoading, setGlobalTasksLoading] = useState(false);
   const [globalTasksError, setGlobalTasksError] = useState("");
   const [taskFilters, setTaskFilters] = useState({ search: "", status: "all", priority: "all", assigned_to: "all", overdue: false });
@@ -64,6 +71,7 @@ function App() {
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState(null);
   const [farmId, setFarmId] = useState("");
+  const [availableFarms, setAvailableFarms] = useState([]);
   const [staff, setStaff] = useState([]);
   const [staffCategories, setStaffCategories] = useState([]);
   const [staffGroups, setStaffGroups] = useState({ directory: true, policies: true });
@@ -119,9 +127,12 @@ function App() {
   const crmRole = auth.role || "customer_support";
   const isAdmin = crmRole === "admin";
   const canWriteCustomers = isAdmin || crmRole === "finance";
+  const currentFarmMember = farmMembers.find((member) => String(member.id) === String(profile?.id));
+  const canManageFarmTasks = isAdmin || crmRole === "finance" || profile?.role === "farmOwner" || (profile?.role === "farmManager" && (currentFarmMember?.permissions == null || currentFarmMember.permissions.includes("manageTasks")));
   const canReply = isAdmin || crmRole === "customer_support";
   const canNotify = isAdmin || crmRole === "customer_support";
   const canReadCommunication = isAdmin || crmRole === "finance" || crmRole === "customer_support";
+  const canViewOperations = isAdmin || crmRole === "finance" || ["farmOwner", "farmManager", "farmWorker"].includes(profile?.role);
   const isGlobalAdmin = Boolean(profile?.is_global_crm_admin);
   const [notification, setNotification] = useState({
     message: "",
@@ -132,6 +143,7 @@ function App() {
   const [importText, setImportText] = useState("");
   const [activeSection, setActiveSection] = useState("home");
   const [activeView, setActiveView] = useState("customers");
+  const [operationsRefreshKey, setOperationsRefreshKey] = useState(0);
   const [customerGroups, setCustomerGroups] = useState({ myCustomers: true, orders: false });
   const [calculator, setCalculator] = useState({
     customers: "",
@@ -226,6 +238,45 @@ function App() {
     setNotice({ message, tone });
     window.setTimeout(() => setNotice(null), 3500);
   };
+  const resetFarmWorkspace = () => {
+    farmTasksRequest.current += 1;
+    setCustomers([]);
+    setSelectedId(null);
+    setInteractions([]);
+    setTimeline([]);
+    setTasks([]);
+    setGlobalTasks([]);
+    setFarmTasks([]);
+    setFarmTasksLoading(false);
+    setFarmTasksError("");
+    setDashboard(null);
+    setDirectory(null);
+    setOrders({ data: [], meta: null });
+    setStaff([]);
+    setStaffCategories([]);
+    setPolicies([]);
+    setStaffLogs([]);
+    setCrmMessages([]);
+    setSupportConversations([]);
+    setActiveSupportConversation(null);
+    setBroadcastHistory([]);
+    setFarmMembers([]);
+    setFarmNotifications([]);
+    setMemberPermissions({});
+    setReport(null);
+    setGlobalFarms([]);
+  };
+  const resetUserWorkspace = () => {
+    resetFarmWorkspace();
+    setProfile(null);
+    setProfileForm({ name: "" });
+    setSettingsFarm(null);
+    setFarmName("");
+    setFarmId("");
+    setAvailableFarms([]);
+    setForm(emptyCustomer);
+    setProfileAvatar("");
+  };
   const logout = async () => {
     try {
       if (auth.token) await api.post("/auth/logout");
@@ -233,9 +284,24 @@ function App() {
       // The local session must still end when the server is unavailable.
     } finally {
       clearSession();
+      localStorage.removeItem(FARM_KEY);
+      localStorage.removeItem(PROFILE_AVATAR_KEY);
+      resetUserWorkspace();
       setAuth({ email: "", password: "", token: "", role: "", rememberMe: false, challengeId: "", destination: "", otp: "" });
-      setFarmId("");
     }
+  };
+
+  const changeFarm = (nextFarmId) => {
+    const nextFarm = availableFarms.find((farm) => String(farm.id) === String(nextFarmId));
+    if (!nextFarm || String(nextFarm.id) === String(farmId)) return;
+    const normalizedFarmId = String(nextFarm.id);
+    localStorage.setItem(FARM_KEY, normalizedFarmId);
+    setFarmId(normalizedFarmId);
+    setSettingsFarm(nextFarm);
+    setFarmName(nextFarm.name || "");
+    setForm((current) => ({ ...current, farm_id: normalizedFarmId }));
+    resetFarmWorkspace();
+    setFilters((current) => ({ ...current, page: 1 }));
   };
   const updateProfileAvatar = (file) => {
     if (!file) return;
@@ -274,9 +340,12 @@ function App() {
         setProfile(session.user);
         setProfileForm({ name: session.user.name || "" });
         const role = session.user.crm_role || (session.user.role === "farmOwner" ? "admin" : "customer_support");
-        const nextFarmId = session.farms[0]?.id ? String(session.farms[0].id) : "";
+        setAvailableFarms(session.farms);
+        const savedFarmId = localStorage.getItem(FARM_KEY);
+        const nextFarm = session.farms.find((farm) => String(farm.id) === savedFarmId) || session.farms[0] || null;
+        const nextFarmId = nextFarm?.id ? String(nextFarm.id) : "";
         setFarmId(nextFarmId);
-        const nextFarm = session.farms[0] || null;
+        if (nextFarmId) localStorage.setItem(FARM_KEY, nextFarmId);
         setSettingsFarm(nextFarm);
         setFarmName(nextFarm?.name || "");
         setForm((current) => ({ ...current, farm_id: nextFarmId }));
@@ -287,7 +356,12 @@ function App() {
   }, [auth.token]);
 
   useEffect(() => {
-    const expire = () => setAuth((current) => ({ ...current, token: "", role: "" }));
+    const expire = () => {
+      localStorage.removeItem(FARM_KEY);
+      localStorage.removeItem(PROFILE_AVATAR_KEY);
+      resetUserWorkspace();
+      setAuth((current) => ({ ...current, token: "", role: "" }));
+    };
     window.addEventListener("pigyworld-auth-expired", expire);
     return () => window.removeEventListener("pigyworld-auth-expired", expire);
   }, []);
@@ -442,16 +516,21 @@ function App() {
 
   const establishSession = (response, identifier, rememberMe) => {
     const session = saveSession(response, rememberMe);
+    resetUserWorkspace();
     const token = response.data.access_token;
     const farms = session.farms;
-    const selectedFarmId = farms[0]?.id ? String(farms[0].id) : "";
+    setAvailableFarms(farms);
+    const savedFarmId = localStorage.getItem(FARM_KEY);
+    const selectedFarm = farms.find((farm) => String(farm.id) === savedFarmId) || farms[0] || null;
+    const selectedFarmId = selectedFarm?.id ? String(selectedFarm.id) : "";
+    if (selectedFarmId) localStorage.setItem(FARM_KEY, selectedFarmId);
     const user = session.user;
     setProfile(user);
     setProfileForm({ name: user.name || "" });
     const role = user.crm_role || (user.role === "farmOwner" ? "admin" : "customer_support");
     setFarmId(selectedFarmId);
-    setSettingsFarm(farms[0] || null);
-    setFarmName(farms[0]?.name || "");
+    setSettingsFarm(selectedFarm);
+    setFarmName(selectedFarm?.name || "");
     setForm((current) => ({ ...current, farm_id: selectedFarmId }));
     setAuth((current) => ({ ...current, password: "", token, role, challengeId: "", destination: "", otp: "" }));
     showNotice(`Welcome back. ${role.replace("_", " ")} workspace loaded.`, "success");
@@ -770,6 +849,56 @@ function App() {
       setGlobalTasksLoading(false);
     }
   };
+  const loadFarmTasks = async () => {
+    if (!auth.token || !farmId) return;
+    const requestId = ++farmTasksRequest.current;
+    try {
+      setFarmTasksLoading(true);
+      setFarmTasksError("");
+      const response = await api.get(`/farms/${farmId}/tasks`, { params: { _refresh: Date.now() } });
+      if (requestId !== farmTasksRequest.current) return;
+      setFarmTasks(response.data?.data || []);
+    } catch (error) {
+      if (requestId !== farmTasksRequest.current) return;
+      setFarmTasksError(error.response?.data?.message || "Unable to load farm operations tasks.");
+    } finally {
+      if (requestId === farmTasksRequest.current) setFarmTasksLoading(false);
+    }
+  };
+  const saveFarmTask = async (_event, draft) => {
+    try {
+      await api.post(`/farms/${farmId}/tasks`, {
+        ...draft,
+        assigned_to: draft.assigned_to ? Number(draft.assigned_to) : null,
+        due_at: draft.due_at ? new Date(draft.due_at).toISOString() : null,
+      });
+      await loadFarmTasks();
+      showNotice("Farm task created.", "success");
+      return true;
+    } catch (error) {
+      showNotice(error.response?.data?.message || "Could not create the farm task.", "error");
+      return false;
+    }
+  };
+  const updateFarmTaskStatus = async (task, status) => {
+    try {
+      await api.patch(`/farms/${farmId}/tasks/${task.id}`, { status });
+      await loadFarmTasks();
+      showNotice(status === "completed" ? "Farm task completed." : "Farm task reopened.", "success");
+    } catch (error) {
+      showNotice(error.response?.data?.message || "Could not update the farm task.", "error");
+    }
+  };
+  const deleteFarmTask = async (task) => {
+    if (!window.confirm(`Delete “${task.title}”?`)) return;
+    try {
+      await api.delete(`/farms/${farmId}/tasks/${task.id}`);
+      await loadFarmTasks();
+      showNotice("Farm task deleted.", "success");
+    } catch (error) {
+      showNotice(error.response?.data?.message || "Could not delete the farm task.", "error");
+    }
+  };
   const updateGlobalTaskStatus = async (task, status) => {
     try {
       await api.patch(`/crm/customers/${task.customer_id}/tasks/${task.id}`, { status });
@@ -983,12 +1112,13 @@ function App() {
   };
   const refreshCurrentView = () => {
     if (activeSection === "home") return loadDashboard();
+    if (activeSection === "operations") return setOperationsRefreshKey((key) => key + 1);
     if (activeSection === "customers") {
       if (activeView.startsWith("orders-")) return loadOrders(activeView.replace("orders-", ""));
       if (["farm-owners", "farm-managers", "farm-workers", "relationships"].includes(activeView)) return loadDirectory();
       return loadCustomers();
     }
-    if (activeSection === "tasks") return loadGlobalTasks();
+    if (activeSection === "tasks") return Promise.all([loadGlobalTasks(), loadFarmTasks()]);
     if (activeSection === "staff") return Promise.all([loadStaff(), loadStaffCategories(), loadPolicies(), loadStaffLogs()]);
     if (activeSection === "communication") return loadCrmMessages();
     if (activeSection === "settings") return activeView === "settings-notifications" ? loadFarmNotifications() : loadSettingsData();
@@ -1202,6 +1332,7 @@ function App() {
       loadSettingsData();
       loadReport();
       loadGlobalTasks();
+      loadFarmTasks();
     }
   }, [auth.token, farmId, canReadCommunication, isGlobalAdmin]);
 
@@ -1212,7 +1343,10 @@ function App() {
 
   useEffect(() => {
     if (activeSection !== "tasks") return undefined;
-    const timer = window.setTimeout(() => loadGlobalTasks(), 250);
+    const timer = window.setTimeout(() => {
+      loadGlobalTasks();
+      loadFarmTasks();
+    }, 250);
     return () => window.clearTimeout(timer);
   }, [activeSection, farmId, taskFilters.search, taskFilters.status, taskFilters.priority, taskFilters.assigned_to, taskFilters.overdue]);
 
@@ -1226,6 +1360,7 @@ function App() {
       loadPolicies();
       loadStaffLogs();
       loadGlobalTasks();
+      loadFarmTasks();
       loadCrmMessages();
       loadDirectory();
       loadSettingsData();
@@ -1300,6 +1435,8 @@ function App() {
             <h1>
               {activeSection === "home"
                 ? "Home"
+                : activeSection === "operations"
+                  ? "Farm operations"
                 : activeSection === "staff"
                   ? activeView === "staff-finance"
                     ? "Finance staff"
@@ -1350,6 +1487,20 @@ function App() {
             </h1>
           </div>
           <div className="top-actions">
+            {availableFarms.length > 1 && (
+              <label className="farm-context-picker">
+                <span>Farm</span>
+                <select
+                  aria-label="Current farm"
+                  value={farmId}
+                  onChange={(event) => changeFarm(event.target.value)}
+                >
+                  {availableFarms.map((farm) => (
+                    <option key={farm.id} value={String(farm.id)}>{farm.name}</option>
+                  ))}
+                </select>
+              </label>
+            )}
             {activeSection !== "home" && <button className="ghost-button" type="button" onClick={refreshCurrentView}>
               ↻ Refresh {activeSection}
             </button>}
@@ -1369,7 +1520,8 @@ function App() {
           <div className={`notice ${notice.tone}`}>{notice.message}</div>
         )}
         {activeSection === "home" && <HomeDashboard dashboard={dashboard} loading={dashboardLoading} error={dashboardError} onRefresh={loadDashboard} onOpen={selectSection} onOpenStatus={(status) => { setFilters((current) => ({ ...current, search: "", status, page: 1 })); selectSection("customers"); }} />}
-        {activeSection === "tasks" && <TasksWorkspace tasks={globalTasks} staff={staff} loading={globalTasksLoading} error={globalTasksError} filters={taskFilters} setFilters={setTaskFilters} onRefresh={loadGlobalTasks} onToggle={updateGlobalTaskStatus} />}
+        {activeSection === "operations" && <FarmOperationsWorkspace key={farmId} farmId={farmId} canView={canViewOperations} refreshKey={operationsRefreshKey} />}
+        {activeSection === "tasks" && <div className="tasks-workspace"><FarmOperationsTasks key={farmId} tasks={farmTasks} members={farmMembers} loading={farmTasksLoading} error={farmTasksError} canManage={canManageFarmTasks} currentUserId={profile?.id} onRefresh={loadFarmTasks} onCreate={saveFarmTask} onToggle={updateFarmTaskStatus} onDelete={deleteFarmTask} /><TasksWorkspace tasks={globalTasks} staff={staff} loading={globalTasksLoading} error={globalTasksError} filters={taskFilters} setFilters={setTaskFilters} onRefresh={loadGlobalTasks} onToggle={updateGlobalTaskStatus} /></div>}
         {activeSection === "customers" && ["farm-owners", "farm-managers", "farm-workers", "relationships"].includes(activeView) && <DirectoryView view={activeView} directory={directory} loading={directoryLoading} error={directoryError} onRefresh={loadDirectory} />}
         {activeSection === "customers" && activeView === "farm-owner-prospects" && isGlobalAdmin && <FarmOwnerProspects />}
         {activeSection === "customers" && activeView.startsWith("orders-") && <OrdersView status={activeView.replace("orders-", "")} orders={orders} loading={ordersLoading} error={ordersError} onRefresh={() => loadOrders(activeView.replace("orders-", ""))} />}

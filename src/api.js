@@ -5,6 +5,7 @@ export const TOKEN_KEY = "pigyworld_access_token";
 export const REFRESH_TOKEN_KEY = "pigyworld_refresh_token";
 export const ROLE_KEY = "pigyworld_crm_role";
 export const SESSION_KEY = "pigyworld_crm_session";
+export const FARM_KEY = "pigyworld_crm_farm_id";
 
 const sessionStorageFor = (key) =>
   localStorage.getItem(key) !== null ? localStorage : sessionStorage;

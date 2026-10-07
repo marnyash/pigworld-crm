@@ -47,7 +47,7 @@ function InboxView({ conversations, selectedConversation, onSelectConversation, 
       </div>
       <div className="conversation-transcript" aria-live="polite">
         {(selectedConversation.messages || []).map((message) => <article className={`conversation-message ${message.sender_role === "crm" ? "outgoing" : "incoming"}`} key={message.id}>
-          <div><strong>{message.sender_name || (message.sender_role === "crm" ? "Customer Support" : "Farm member")}</strong><time>{formatTime(message.created_at)}</time></div><p>{message.body}</p>
+        <div><strong>{message.sender_name || (message.sender_role === "crm" ? "Customer Support" : "Farm member")}</strong><time>{formatTime(message.created_at)}</time></div><p>{message.body}</p><small className="conversation-message-read-state">{message.sender_role === "crm" ? (message.read_at ? "Read by farm user" : "Sent") : (message.read_at ? "Read" : "Unread")}</small>
         </article>)}
       </div>
       {selectedConversation.status === "open" && <form className="communication-composer" onSubmit={submit}>

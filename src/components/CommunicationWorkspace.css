@@ -118,6 +118,14 @@
   line-height: 1.5;
 }
 
+.conversation-message-read-state {
+  display: block;
+  margin-top: 7px;
+  color: var(--muted);
+  font-size: 10px;
+  text-align: right;
+}
+
 .communication-message-row > span {
   color: var(--green);
   font-size: 11px;

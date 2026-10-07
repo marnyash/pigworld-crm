@@ -58,18 +58,21 @@ function InboxView({ conversations, selectedConversation, onSelectConversation, 
   </section>;
 }
 
-function BroadcastView({ farmMembers, globalFarms, isGlobalAdmin, farmId, history, notification, setNotification, onSubmit, canNotify }) {
+function BroadcastView({ farmMembers, globalFarms, isGlobalAdmin, farmId, currentUserId, history, notification, setNotification, onSubmit, canNotify }) {
   const selectedFarm = globalFarms.find((farm) => String(farm.id) === String(notification.farm_id || farmId));
   const members = isGlobalAdmin ? (selectedFarm?.members || []) : farmMembers;
-  const recipients = useMemo(() => members.filter((member) => ["farmOwner", "farmManager", "farmWorker"].includes(member.role)), [members]);
-  const recipientCount = notification.recipient_id ? 1 : recipients.length;
+  const recipients = useMemo(() => members.filter((member) =>
+    member.role === "farmOwner" || (["farmManager", "farmWorker"].includes(member.role) && !member.crm_role),
+  ), [members]);
+  const broadcastRecipientCount = recipients.filter((member) => String(member.id) !== String(currentUserId)).length;
+  const recipientCount = notification.recipient_id ? 1 : broadcastRecipientCount;
   if (!canNotify) return <section className="panel-card communication-workspace-panel"><div className="eyebrow">Broadcast</div><h2>Read-only communication access</h2><p className="communication-muted">Your role can read communication messages but cannot send broadcasts.</p></section>;
   return <section className="panel-card communication-workspace-panel">
     <div className="panel-heading"><div><div className="eyebrow">Announcements</div><h2>Send a broadcast</h2></div><span>Not a support reply</span></div>
     <form className="communication-composer" onSubmit={onSubmit}>
       {isGlobalAdmin && <label>Farm<select required value={notification.farm_id || ""} onChange={(event) => setNotification((current) => ({ ...current, farm_id: event.target.value, recipient_id: "" }))}><option value="">Select a farm</option>{globalFarms.map((farm) => <option key={farm.id} value={farm.id}>{farm.name}</option>)}</select></label>}
       <label>Audience <select value={notification.recipient_id} onChange={(event) => setNotification((current) => ({ ...current, recipient_id: event.target.value }))}>
-        <option value="">Everyone in this farm ({recipients.length})</option>{recipients.map((member) => <option key={member.id} value={member.id}>{member.name} · {member.role}</option>)}
+        <option value="">Everyone in this farm ({broadcastRecipientCount})</option>{recipients.map((member) => <option key={member.id} value={member.id}>{member.name} · {member.role}</option>)}
       </select></label>
       <input maxLength="160" value={notification.title || ""} onChange={(event) => setNotification((current) => ({ ...current, title: event.target.value }))} placeholder="Announcement title (optional)" />
       <textarea required rows="5" maxLength="1000" value={notification.message} onChange={(event) => setNotification((current) => ({ ...current, message: event.target.value }))} placeholder="Write an announcement" />
@@ -97,6 +100,7 @@ export function CommunicationWorkspace({
   globalFarms,
   isGlobalAdmin,
   farmId,
+  currentUserId,
   history,
   notification,
   setNotification,
@@ -109,7 +113,7 @@ export function CommunicationWorkspace({
   canRead,
 }) {
   if (!canRead) return <section className="panel-card communication-workspace-panel"><div className="eyebrow">Communication</div><h2>Access restricted</h2><p className="communication-muted">Your role does not have access to CRM communication.</p></section>;
-  if (view === "communication-broadcast") return <BroadcastView farmMembers={farmMembers} globalFarms={globalFarms} isGlobalAdmin={isGlobalAdmin} farmId={farmId} history={history} notification={notification} setNotification={setNotification} onSubmit={onSubmit} canNotify={canNotify} />;
+  if (view === "communication-broadcast") return <BroadcastView farmMembers={farmMembers} globalFarms={globalFarms} isGlobalAdmin={isGlobalAdmin} farmId={farmId} currentUserId={currentUserId} history={history} notification={notification} setNotification={setNotification} onSubmit={onSubmit} canNotify={canNotify} />;
   if (view === "communication-activity") return <ActivityView selected={selected} interactions={interactions} canReply={canReply} />;
   if (view === "communication-templates") return <NotificationTemplates onUse={onUseTemplate} isGlobalAdmin={isGlobalAdmin} />;
   return <InboxView conversations={conversations} selectedConversation={selectedConversation} onSelectConversation={onSelectConversation} onReply={onReply} onUpdateConversation={onUpdateConversation} staff={staff} />;

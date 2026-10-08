@@ -2,10 +2,12 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { api, clearSession, FARM_KEY, ROLE_KEY, saveProfile, saveSession, TOKEN_KEY } from "./api";
 import "./customer-workspace.css";
 import "./farm-context.css";
+import "./registered-buyers.css";
 import { AdminNavbar } from "./components/AdminNavbar";
 import { CustomerSidebar } from "./components/CustomerSidebar";
 import { HomeDashboard } from "./components/HomeDashboard";
 import { DirectoryView } from "./components/DirectoryView";
+import { RegisteredBuyers } from "./components/RegisteredBuyers";
 import { OrdersView } from "./components/OrdersView";
 import { PipelineBoard } from "./components/PipelineBoard";
 import { FinanceSidebar } from "./components/FinanceSidebar";
@@ -154,6 +156,7 @@ function App() {
   const [activeSection, setActiveSection] = useState("home");
   const [activeView, setActiveView] = useState("customers");
   const [operationsRefreshKey, setOperationsRefreshKey] = useState(0);
+  const [buyersRefreshKey, setBuyersRefreshKey] = useState(0);
   const [customerGroups, setCustomerGroups] = useState({ myCustomers: true, orders: false });
   const [calculator, setCalculator] = useState({
     customers: "",
@@ -1177,6 +1180,7 @@ function App() {
     if (activeSection === "home") return loadDashboard();
     if (activeSection === "operations") return setOperationsRefreshKey((key) => key + 1);
     if (activeSection === "customers") {
+      if (activeView === "registered-buyers") return setBuyersRefreshKey((key) => key + 1);
       if (activeView.startsWith("orders-")) return loadOrders(activeView.replace("orders-", ""));
       if (["farm-owners", "farm-managers", "farm-workers", "relationships"].includes(activeView)) return loadDirectory();
       return loadCustomers();
@@ -1550,11 +1554,13 @@ function App() {
                         : "Communication inbox"
                   : activeView === "farm-owner-prospects"
                     ? "Farm-owner prospects"
+                    : activeView === "registered-buyers"
+                      ? "Registered buyers"
                     : "Customers"}
             </h1>
           </div>
           <div className="top-actions">
-            {availableFarms.length > 1 && (
+            {activeSection === "operations" && availableFarms.length > 1 && (
               <label className="farm-context-picker">
                 <span>Farm</span>
                 <select
@@ -1590,6 +1596,7 @@ function App() {
         {activeSection === "operations" && <FarmOperationsWorkspace key={farmId} farmId={farmId} canView={canViewOperations} managePermissions={farmOperationPermissions} refreshKey={operationsRefreshKey} />}
         {activeSection === "tasks" && <div className="tasks-workspace"><FarmOperationsTasks key={farmId} tasks={farmTasks} members={farmMembers} loading={farmTasksLoading} error={farmTasksError} canManage={canManageFarmTasks} currentUserId={profile?.id} onRefresh={loadFarmTasks} onCreate={saveFarmTask} onToggle={updateFarmTaskStatus} onDelete={deleteFarmTask} /><TasksWorkspace tasks={globalTasks} staff={staff} loading={globalTasksLoading} error={globalTasksError} filters={taskFilters} setFilters={setTaskFilters} onRefresh={loadGlobalTasks} onToggle={updateGlobalTaskStatus} /></div>}
         {activeSection === "customers" && ["farm-owners", "farm-managers", "farm-workers", "relationships"].includes(activeView) && <DirectoryView view={activeView} directory={directory} loading={directoryLoading} error={directoryError} onRefresh={loadDirectory} />}
+        {activeSection === "customers" && activeView === "registered-buyers" && <RegisteredBuyers refreshKey={buyersRefreshKey} />}
         {activeSection === "customers" && activeView === "farm-owner-prospects" && isGlobalAdmin && <FarmOwnerProspects />}
         {activeSection === "customers" && activeView.startsWith("orders-") && <OrdersView status={activeView.replace("orders-", "")} orders={orders} loading={ordersLoading} error={ordersError} onRefresh={() => loadOrders(activeView.replace("orders-", ""))} />}
         {activeSection === "communication" && <CommunicationWorkspace view={activeView} conversations={supportConversations} selectedConversation={activeSupportConversation} onSelectConversation={openSupportConversation} onReply={sendSupportReply} onUpdateConversation={updateSupportConversation} staff={staff} farmMembers={farmMembers} globalFarms={globalFarms} isGlobalAdmin={isGlobalAdmin} farmId={farmId} currentUserId={profile?.id} history={broadcastHistory} notification={notification} setNotification={setNotification} onSubmit={sendNotification} onUseTemplate={useNotificationTemplate} selected={selected} interactions={interactions} canNotify={canNotify} canReply={canReply} canRead={canReadCommunication} />}

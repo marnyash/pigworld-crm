@@ -13,6 +13,7 @@ export const customerOrderStatuses = ["pending", "suspended", "cancelled", "ongo
 
 export const customerNavLinks = [
   { id: "customers", label: "Customer List" },
+  { id: "registered-buyers", label: "Registered Buyers" },
   { id: "farm-owners", label: "Farm Owners" },
   { id: "farm-managers", label: "Farm Managers" },
   { id: "farm-workers", label: "Farm Workers" },

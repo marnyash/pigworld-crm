@@ -24,7 +24,6 @@ export function FarmOwnerProspects() {
     } finally {
       setLoading(false);
     }
-n
   };
   useEffect(() => { load(); }, [search]);
 

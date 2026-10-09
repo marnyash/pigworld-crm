@@ -49,13 +49,6 @@ export function FarmOperationsSidebar({
         <span>⚠</span> Emergencies
       </button>
       <button
-        className={`nav-item standalone-nav-item ${activeView === "operations-records" ? "active" : ""}`}
-        type="button"
-        onClick={() => setActiveView("operations-records")}
-      >
-        <span>•</span> Farm records
-      </button>
-      <button
         className={`nav-item standalone-nav-item ${activeView === "operations-herd" ? "active" : ""}`}
         type="button"
         onClick={() => setActiveView("operations-herd")}

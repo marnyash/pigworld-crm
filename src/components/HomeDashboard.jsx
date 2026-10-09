@@ -1,6 +1,18 @@
 import { useEffect, useState } from "react";
 
-export function HomeDashboard({ dashboard, loading, error, onRefresh, onOpen, onOpenStatus }) {
+export function HomeDashboard({
+  dashboard,
+  loading,
+  error,
+  onRefresh,
+  onOpen,
+  onOpenStatus,
+  directory,
+  directoryLoading,
+  directoryError,
+  onDirectoryRefresh,
+  onOpenDirectory,
+}) {
   const [metric, setMetric] = useState("growth");
   const [chartType, setChartType] = useState("pie");
   const [showChartMenu, setShowChartMenu] = useState(false);
@@ -9,14 +21,23 @@ export function HomeDashboard({ dashboard, loading, error, onRefresh, onOpen, on
     const timer = window.setInterval(() => setHeroSlide((current) => (current + 1) % 2), 5000);
     return () => window.clearInterval(timer);
   }, []);
+  const farmOverview = (
+    <FarmOverview
+      directory={directory}
+      loading={directoryLoading}
+      error={directoryError}
+      onRefresh={onDirectoryRefresh}
+      onOpen={onOpenDirectory}
+    />
+  );
   if (loading && !dashboard) {
-    return <section className="home-dashboard-state panel-card"><div className="eyebrow">Workspace at a glance</div><h2>Loading dashboard</h2><p>Fetching current farm metrics and work queues.</p></section>;
+    return <section className="home-dashboard">{farmOverview}<section className="home-dashboard-state panel-card"><div className="eyebrow">Workspace at a glance</div><h2>Loading dashboard</h2><p>Fetching current farm metrics and work queues.</p></section></section>;
   }
   if (error && !dashboard) {
-    return <section className="home-dashboard-state panel-card"><div className="eyebrow">Dashboard unavailable</div><h2>We could not load Home</h2><p>{error}</p><button className="primary-button" type="button" onClick={onRefresh}>Try again</button></section>;
+    return <section className="home-dashboard">{farmOverview}<section className="home-dashboard-state panel-card"><div className="eyebrow">Dashboard unavailable</div><h2>We could not load Home</h2><p>{error}</p><button className="primary-button" type="button" onClick={onRefresh}>Try again</button></section></section>;
   }
   if (!dashboard) {
-    return <section className="home-dashboard-state panel-card"><div className="eyebrow">No farm selected</div><h2>Choose a farm to continue</h2><p>Home metrics will appear when your account is linked to a farm.</p></section>;
+    return <section className="home-dashboard">{farmOverview}<section className="home-dashboard-state panel-card"><div className="eyebrow">No farm selected</div><h2>Choose a farm to continue</h2><p>Home metrics will appear when your account is linked to a farm.</p></section></section>;
   }
   const customers = dashboard.customers || {};
   const alerts = dashboard.alerts || {};
@@ -51,6 +72,7 @@ export function HomeDashboard({ dashboard, loading, error, onRefresh, onOpen, on
         </div>
         <button className="primary-button" type="button" onClick={onRefresh} disabled={loading}>{loading ? "Refreshing..." : "Refresh dashboard"}</button>
       </div>
+      {farmOverview}
       <div className="home-kpis">
         <HomeKpi label="Customers" value={customers.total} onClick={() => onOpen("customers")} />
         <HomeKpi label="Active relationships" value={customers.active} onClick={() => onOpenStatus("all")} />
@@ -83,6 +105,85 @@ export function HomeDashboard({ dashboard, loading, error, onRefresh, onOpen, on
           </button>)}
         </div>}
       </section>
+    </section>
+  );
+}
+
+function FarmOverview({ directory, loading, error, onRefresh, onOpen }) {
+  const relationships = directory?.relationships || [];
+  const farmOwners = relationships.flatMap((relationship) =>
+    relationship.owner ? [relationship.owner] : [],
+  );
+  const farmManagers = relationships.flatMap(
+    (relationship) => relationship.managers || [],
+  );
+  const farmWorkers = relationships.flatMap(
+    (relationship) => relationship.workers || [],
+  );
+  const uniqueCount = (rows = []) =>
+    new Set(rows.map((row) => String(row.id))).size;
+  const farms = directory
+    ? new Set(relationships.map((relationship) => String(relationship.farm_id))).size
+    : null;
+  const farmRelationships = directory
+    ? relationships.reduce(
+        (total, relationship) =>
+          total +
+          (relationship.owner ? 1 : 0) +
+          (relationship.managers?.length || 0) +
+          (relationship.workers?.length || 0),
+        0,
+      )
+    : null;
+  const count = (value) => {
+    if (value !== null && value !== undefined) return value;
+    return loading && !directory ? "…" : "—";
+  };
+  const metrics = [
+    { label: "Farms", value: count(farms), detail: "Accessible farms", view: "relationships" },
+    { label: "Farm Owners", value: count(directory ? uniqueCount(farmOwners) : null), detail: "Unique accounts", view: "farm-owners" },
+    { label: "Farm Managers", value: count(directory ? uniqueCount(farmManagers) : null), detail: "Unique accounts", view: "farm-managers" },
+    { label: "Farm Workers", value: count(directory ? uniqueCount(farmWorkers) : null), detail: "Unique accounts", view: "farm-workers" },
+    { label: "Farm Relationships", value: count(farmRelationships), detail: "Owner and team links", view: "relationships" },
+    { label: "Buyers", value: count(directory?.buyers), detail: "Registered accounts", view: "registered-buyers" },
+  ];
+
+  return (
+    <section className="farm-overview">
+      <div className="farm-overview-heading">
+        <div>
+          <div className="eyebrow">Farm network</div>
+          <h2>Overview</h2>
+          <p>Farm and team totals for farms available to your account, plus registered buyers.</p>
+        </div>
+        <button className="filter-button" type="button" onClick={onRefresh} disabled={loading}>
+          {loading ? "Refreshing…" : "Refresh"}
+        </button>
+      </div>
+      <div className="farm-overview-grid">
+        {metrics.map((item) => (
+          <button
+            className="home-kpi farm-overview-kpi"
+            key={item.label}
+            type="button"
+            onClick={() => onOpen(item.view)}
+          >
+            <span>{item.label}</span>
+            <strong>{item.value}</strong>
+            <small>{item.detail}</small>
+          </button>
+        ))}
+      </div>
+      {error && (
+        <div className="farm-overview-error" role="alert">
+          <span>{error}</span>
+          <button className="filter-button" type="button" onClick={onRefresh}>
+            Try again
+          </button>
+        </div>
+      )}
+      {loading && !directory && <p className="farm-overview-message" role="status">Loading farm overview counts…</p>}
+      {!loading && !directory && !error && <p className="farm-overview-message">No farm overview data is available.</p>}
     </section>
   );
 }

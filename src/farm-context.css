@@ -30,6 +30,45 @@
   gap: 16px;
 }
 
+.farm-operations-page {
+  display: grid;
+  gap: 14px;
+}
+
+.operations-page-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px;
+}
+
+.operations-page-heading h2 {
+  margin: 5px 0;
+  font-size: 20px;
+}
+
+.operations-page-heading p {
+  margin: 0;
+  color: #77847c;
+  font-size: 12px;
+}
+
+.operations-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 2px 4px;
+  color: #77847c;
+  font-size: 12px;
+}
+
+.operations-pagination > div {
+  display: flex;
+  gap: 8px;
+}
+
 .operations-module-tabs {
   display: flex;
   gap: 7px;
@@ -180,6 +219,17 @@
 .farm-task-main small,
 .farm-task-main span {
   overflow-wrap: anywhere;
+}
+
+@media (max-width: 700px) {
+  .operations-page-heading {
+    align-items: flex-start;
+  }
+
+  .operations-pagination {
+    align-items: flex-start;
+    flex-direction: column;
+  }
 }
 
 .farm-task-main small,

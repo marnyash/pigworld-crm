@@ -27,6 +27,11 @@ import { CommunicationWorkspace } from "./components/CommunicationWorkspace";
 import { SettingsSidebar } from "./components/SettingsSidebar";
 import { SettingsWorkspace } from "./components/SettingsWorkspace";
 import { FarmOperationsWorkspace } from "./components/FarmOperationsWorkspace";
+import { FarmHerdWorkspace } from "./components/FarmHerdWorkspace";
+import { FarmOperationsSidebar } from "./components/FarmOperationsSidebar";
+import { CrmFarmOperations } from "./components/CrmFarmOperations";
+import { MarketSidebar } from "./components/MarketSidebar";
+import { MarketListings } from "./components/MarketListings";
 const emptyCustomer = {
   farm_id: "",
   assigned_user_id: "",
@@ -156,6 +161,8 @@ function App() {
   const [activeSection, setActiveSection] = useState("home");
   const [activeView, setActiveView] = useState("customers");
   const [operationsRefreshKey, setOperationsRefreshKey] = useState(0);
+  const [marketRefreshKey, setMarketRefreshKey] = useState(0);
+  const [operationsOrdersExpanded, setOperationsOrdersExpanded] = useState(true);
   const [buyersRefreshKey, setBuyersRefreshKey] = useState(0);
   const [customerGroups, setCustomerGroups] = useState({ myCustomers: true, orders: false });
   const [calculator, setCalculator] = useState({
@@ -193,6 +200,8 @@ function App() {
   });
   const selectSection = (section) => {
     setActiveSection(section);
+    if (section === "operations") setActiveView("operations-farms");
+    if (section === "market") setActiveView("market-posted-pigs");
     if (section === "customers") setActiveView("customers");
     if (section === "tasks") setActiveView("tasks");
     if (section === "staff") setActiveView("staff-list");
@@ -1179,6 +1188,7 @@ function App() {
   const refreshCurrentView = () => {
     if (activeSection === "home") return loadDashboard();
     if (activeSection === "operations") return setOperationsRefreshKey((key) => key + 1);
+    if (activeSection === "market") return setMarketRefreshKey((key) => key + 1);
     if (activeSection === "customers") {
       if (activeView === "registered-buyers") return setBuyersRefreshKey((key) => key + 1);
       if (activeView.startsWith("orders-")) return loadOrders(activeView.replace("orders-", ""));
@@ -1488,6 +1498,8 @@ function App() {
         {activeSection === "finance" && <FinanceSidebar activeView={activeView} setActiveView={setActiveView} />}
         {activeSection === "communication" && <CommunicationSidebar activeView={activeView} setActiveView={setActiveView} />}
         {activeSection === "settings" && <SettingsSidebar activeView={activeView} setActiveView={setActiveView} isAdmin={isAdmin} />}
+        {activeSection === "operations" && <FarmOperationsSidebar activeView={activeView} setActiveView={setActiveView} ordersExpanded={operationsOrdersExpanded} setOrdersExpanded={setOperationsOrdersExpanded} />}
+        {activeSection === "market" && <MarketSidebar activeView={activeView} setActiveView={setActiveView} />}
         <div className="sidebar-footer">
           {profileAvatar ? <img className="profile-avatar-image" src={profileAvatar} alt={`${profile?.name || "User"} profile`} /> : <span className="profile-avatar-fallback">{(profile?.name || auth.email || "U").slice(0, 1).toUpperCase()}</span>}
           <div>
@@ -1505,7 +1517,23 @@ function App() {
               {activeSection === "home"
                 ? "Home"
                 : activeSection === "operations"
-                  ? "Farm operations"
+                  ? activeView === "operations-farms"
+                    ? "Farms"
+                    : activeView === "operations-feed-orders"
+                      ? "Feed orders"
+                      : activeView === "operations-medicine-orders"
+                        ? "Medicine orders"
+                        : activeView === "operations-emergencies"
+                          ? "Emergencies"
+                          : activeView === "operations-records"
+                            ? "Farm records"
+                            : activeView === "operations-herd"
+                              ? "Farm herd"
+                            : "Farm operations"
+                : activeSection === "market"
+                  ? activeView === "market-sold-pigs"
+                    ? "Sold Pigs"
+                    : "Posted Pigs"
                 : activeSection === "staff"
                   ? activeView === "staff-finance"
                     ? "Finance staff"
@@ -1560,7 +1588,7 @@ function App() {
             </h1>
           </div>
           <div className="top-actions">
-            {activeSection === "operations" && availableFarms.length > 1 && (
+            {activeSection === "operations" && activeView === "operations-records" && availableFarms.length > 1 && (
               <label className="farm-context-picker">
                 <span>Farm</span>
                 <select
@@ -1592,8 +1620,11 @@ function App() {
         {notice && (
           <div className={`notice ${notice.tone}`}>{notice.message}</div>
         )}
-        {activeSection === "home" && <HomeDashboard dashboard={dashboard} loading={dashboardLoading} error={dashboardError} onRefresh={loadDashboard} onOpen={selectSection} onOpenStatus={(status) => { setFilters((current) => ({ ...current, search: "", status, page: 1 })); selectSection("customers"); }} />}
-        {activeSection === "operations" && <FarmOperationsWorkspace key={farmId} farmId={farmId} canView={canViewOperations} managePermissions={farmOperationPermissions} refreshKey={operationsRefreshKey} />}
+        {activeSection === "home" && <HomeDashboard dashboard={dashboard} loading={dashboardLoading} error={dashboardError} onRefresh={loadDashboard} onOpen={selectSection} onOpenStatus={(status) => { setFilters((current) => ({ ...current, search: "", status, page: 1 })); selectSection("customers"); }} directory={directory} directoryLoading={directoryLoading} directoryError={directoryError} onDirectoryRefresh={loadDirectory} onOpenDirectory={(view) => { setActiveSection("customers"); setActiveView(view); }} />}
+        {activeSection === "operations" && activeView === "operations-records" && <FarmOperationsWorkspace key={farmId} farmId={farmId} canView={canViewOperations} managePermissions={farmOperationPermissions} refreshKey={operationsRefreshKey} />}
+        {activeSection === "operations" && activeView === "operations-herd" && <FarmHerdWorkspace canView={canViewOperations} />}
+        {activeSection === "operations" && !["operations-records", "operations-herd"].includes(activeView) && <CrmFarmOperations key={farmId} view={activeView} farms={availableFarms} isGlobalAdmin={isGlobalAdmin} refreshKey={operationsRefreshKey} onRefresh={() => setOperationsRefreshKey((key) => key + 1)} />}
+        {activeSection === "market" && <MarketListings key={activeView} view={activeView} refreshKey={marketRefreshKey} onRefresh={() => setMarketRefreshKey((key) => key + 1)} />}
         {activeSection === "tasks" && <div className="tasks-workspace"><FarmOperationsTasks key={farmId} tasks={farmTasks} members={farmMembers} loading={farmTasksLoading} error={farmTasksError} canManage={canManageFarmTasks} currentUserId={profile?.id} onRefresh={loadFarmTasks} onCreate={saveFarmTask} onToggle={updateFarmTaskStatus} onDelete={deleteFarmTask} /><TasksWorkspace tasks={globalTasks} staff={staff} loading={globalTasksLoading} error={globalTasksError} filters={taskFilters} setFilters={setTaskFilters} onRefresh={loadGlobalTasks} onToggle={updateGlobalTaskStatus} /></div>}
         {activeSection === "customers" && ["farm-owners", "farm-managers", "farm-workers", "relationships"].includes(activeView) && <DirectoryView view={activeView} directory={directory} loading={directoryLoading} error={directoryError} onRefresh={loadDirectory} />}
         {activeSection === "customers" && activeView === "registered-buyers" && <RegisteredBuyers refreshKey={buyersRefreshKey} />}

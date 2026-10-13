@@ -4,7 +4,7 @@ import { NotificationTemplates } from "./NotificationTemplates";
 
 const formatTime = (value) => value ? new Date(value).toLocaleString() : "";
 
-function InboxView({ conversations, selectedConversation, onSelectConversation, onReply, onUpdateConversation, staff }) {
+function InboxView({ conversations, selectedConversation, onSelectConversation, onReply, onUpdateConversation, onlineAgents }) {
   const [draft, setDraft] = useState("");
   const [statusFilter, setStatusFilter] = useState("open");
   const visible = conversations.filter((conversation) => statusFilter === "all" || conversation.status === statusFilter);
@@ -23,6 +23,12 @@ function InboxView({ conversations, selectedConversation, onSelectConversation, 
         <option value="open">Open</option><option value="closed">Closed</option><option value="all">All conversations</option>
       </select>
     </div>
+    <div className="communication-online-roster" aria-live="polite">
+      <strong>Online now · {onlineAgents.length}</strong>
+      {onlineAgents.length === 0
+        ? <span>No customer-care agents online. New messages will be queued.</span>
+        : onlineAgents.map((agent) => <span key={agent.id}>{agent.name} · {agent.open_chats} chats · {agent.open_crm_tasks + agent.open_farm_tasks} open tasks</span>)}
+    </div>
     <div className="communication-message-list">
       {visible.length === 0 ? <div className="state-message">No {statusFilter === "all" ? "support" : statusFilter} conversations.</div> : visible.map((conversation) => <button
         className={`communication-message-row conversation-select ${selectedConversation?.id === conversation.id ? "active" : ""}`}
@@ -40,7 +46,7 @@ function InboxView({ conversations, selectedConversation, onSelectConversation, 
         <div><div className="eyebrow">{selectedConversation.customer?.email || "Farm user"}</div><h3>{selectedConversation.customer?.name || "Farm member"}</h3></div>
         <div className="conversation-controls">
           <label>Assigned agent <select aria-label="Assigned agent" value={selectedConversation.assigned_agent?.id || ""} onChange={(event) => onUpdateConversation({ assigned_user_id: event.target.value ? Number(event.target.value) : null })}>
-            <option value="">Unassigned</option>{staff.filter((person) => ["admin", "customer_support"].includes(person.crm_role || (person.role === "farmOwner" ? "admin" : "")) && !person.crm_closed_at).map((person) => <option key={person.id} value={person.id}>{person.name} ({person.crm_role || "admin"})</option>)}
+            <option value="">Unassigned</option>{onlineAgents.map((person) => <option key={person.id} value={person.id}>{person.name} ({person.role}) · {person.open_chats} chats, {person.open_crm_tasks + person.open_farm_tasks} tasks</option>)}
           </select></label>
           <button className="filter-button" type="button" onClick={() => onUpdateConversation({ status: selectedConversation.status === "open" ? "closed" : "open" })}>{selectedConversation.status === "open" ? "Close conversation" : "Reopen"}</button>
         </div>
@@ -95,7 +101,6 @@ export function CommunicationWorkspace({
   onSelectConversation,
   onReply,
   onUpdateConversation,
-  staff,
   farmMembers,
   globalFarms,
   isGlobalAdmin,
@@ -111,10 +116,11 @@ export function CommunicationWorkspace({
   canNotify,
   canReply,
   canRead,
+  onlineAgents = [],
 }) {
   if (!canRead) return <section className="panel-card communication-workspace-panel"><div className="eyebrow">Communication</div><h2>Access restricted</h2><p className="communication-muted">Your role does not have access to CRM communication.</p></section>;
   if (view === "communication-broadcast") return <BroadcastView farmMembers={farmMembers} globalFarms={globalFarms} isGlobalAdmin={isGlobalAdmin} farmId={farmId} currentUserId={currentUserId} history={history} notification={notification} setNotification={setNotification} onSubmit={onSubmit} canNotify={canNotify} />;
   if (view === "communication-activity") return <ActivityView selected={selected} interactions={interactions} canReply={canReply} />;
   if (view === "communication-templates") return <NotificationTemplates onUse={onUseTemplate} isGlobalAdmin={isGlobalAdmin} />;
-  return <InboxView conversations={conversations} selectedConversation={selectedConversation} onSelectConversation={onSelectConversation} onReply={onReply} onUpdateConversation={onUpdateConversation} staff={staff} />;
+  return <InboxView conversations={conversations} selectedConversation={selectedConversation} onSelectConversation={onSelectConversation} onReply={onReply} onUpdateConversation={onUpdateConversation} onlineAgents={onlineAgents} />;
 }

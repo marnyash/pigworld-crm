@@ -110,6 +110,9 @@ function App() {
   const [crmMessages, setCrmMessages] = useState([]);
   const [supportConversations, setSupportConversations] = useState([]);
   const [activeSupportConversation, setActiveSupportConversation] = useState(null);
+  const [supportOnlineAgents, setSupportOnlineAgents] = useState([]);
+  const [supportAvailable, setSupportAvailable] = useState(false);
+  const [supportPresenceSaving, setSupportPresenceSaving] = useState(false);
   const [broadcastHistory, setBroadcastHistory] = useState([]);
   const [profile, setProfile] = useState(null);
   const [profileAvatar, setProfileAvatar] = useState("");
@@ -283,6 +286,8 @@ function App() {
     setCrmMessages([]);
     setSupportConversations([]);
     setActiveSupportConversation(null);
+    setSupportOnlineAgents([]);
+    setSupportAvailable(false);
     setBroadcastHistory([]);
     setFarmMembers([]);
     setFarmNotifications([]);
@@ -304,6 +309,9 @@ function App() {
   };
   const logout = async () => {
     try {
+      if (auth.token && farmId && canReply && !isGlobalAdmin) {
+        await api.post("/crm/support-presence", { farm_id: Number(farmId), online: false });
+      }
       if (auth.token) await api.post("/auth/logout");
     } catch {
       // The local session must still end when the server is unavailable.
@@ -978,11 +986,32 @@ function App() {
           ? api.get("/crm/broadcasts", { params: { farm_id: messageFarmId } })
           : Promise.resolve({ data: { data: [] } }),
       ]);
+      const presenceResponse = canReply && !isGlobalAdmin
+        ? await api.get("/crm/support-presence", { params: { farm_id: messageFarmId } })
+        : { data: { data: { online_agents: [], current_user_online: false } } };
       setCrmMessages(legacyResponse.data?.data || []);
       setSupportConversations(conversationResponse.data?.data || []);
       setBroadcastHistory(broadcastResponse.data?.data || []);
+      setSupportOnlineAgents(presenceResponse.data?.data?.online_agents || []);
+      setSupportAvailable(Boolean(presenceResponse.data?.data?.current_user_online));
     } catch (error) {
       showNotice(error.response?.data?.message || "Unable to load CRM messages.", "error");
+    }
+  };
+  const updateSupportAvailability = async (online) => {
+    if (!farmId || supportPresenceSaving) return;
+    setSupportPresenceSaving(true);
+    try {
+      await api.post("/crm/support-presence", {
+        farm_id: Number(farmId),
+        online,
+      });
+      setSupportAvailable(online);
+      await loadCrmMessages();
+    } catch (error) {
+      showNotice(error.response?.data?.message || "Could not update live chat availability.", "error");
+    } finally {
+      setSupportPresenceSaving(false);
     }
   };
   const loadGlobalFarms = async () => {
@@ -1420,6 +1449,38 @@ function App() {
   }, [auth.token, farmId, canReadCommunication, isGlobalAdmin, globalFarms.length, notification.farm_id]);
 
   useEffect(() => {
+    if (!auth.token || !canReadCommunication || activeSection !== "communication" || activeView !== "communication-inbox") return undefined;
+    const timer = window.setInterval(loadCrmMessages, 15 * 1000);
+    return () => window.clearInterval(timer);
+  }, [auth.token, canReadCommunication, activeSection, activeView, farmId, isGlobalAdmin, globalFarms.length, notification.farm_id]);
+
+  useEffect(() => {
+    if (!auth.token || !farmId || !canReply || isGlobalAdmin || !supportAvailable) return undefined;
+    let active = true;
+    const heartbeat = async () => {
+      try {
+        await api.post("/crm/support-presence", {
+          farm_id: Number(farmId),
+          online: true,
+        });
+      } catch (error) {
+        if (!active) return;
+        setSupportAvailable(false);
+        showNotice(error.response?.data?.message || "Your live-chat availability could not be renewed.", "error");
+      }
+    };
+    const timer = window.setInterval(heartbeat, 40 * 1000);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+      api.post("/crm/support-presence", {
+        farm_id: Number(farmId),
+        online: false,
+      }).catch((error) => console.error("Could not mark CRM support presence offline.", error));
+    };
+  }, [auth.token, farmId, canReply, isGlobalAdmin, supportAvailable]);
+
+  useEffect(() => {
     if (activeSection !== "tasks") return undefined;
     const timer = window.setTimeout(() => {
       loadGlobalTasks();
@@ -1602,6 +1663,21 @@ function App() {
                 </select>
               </label>
             )}
+            {activeSection === "communication" && activeView === "communication-inbox" && canReply && !isGlobalAdmin && (
+              <div className="support-presence-control">
+                <span aria-live="polite">
+                  {supportAvailable ? `Online · ${supportOnlineAgents.length} agent${supportOnlineAgents.length === 1 ? "" : "s"}` : "Offline"}
+                </span>
+                <button
+                  className={supportAvailable ? "ghost-button" : "primary-button"}
+                  type="button"
+                  disabled={supportPresenceSaving || !farmId}
+                  onClick={() => updateSupportAvailability(!supportAvailable)}
+                >
+                  {supportPresenceSaving ? "Updating…" : supportAvailable ? "Go offline" : "Go online"}
+                </button>
+              </div>
+            )}
             {activeSection !== "home" && <button className="ghost-button" type="button" onClick={refreshCurrentView}>
               ↻ Refresh {activeSection}
             </button>}
@@ -1630,7 +1706,7 @@ function App() {
         {activeSection === "customers" && activeView === "registered-buyers" && <RegisteredBuyers refreshKey={buyersRefreshKey} />}
         {activeSection === "customers" && activeView === "farm-owner-prospects" && isGlobalAdmin && <FarmOwnerProspects />}
         {activeSection === "customers" && activeView.startsWith("orders-") && <OrdersView status={activeView.replace("orders-", "")} orders={orders} loading={ordersLoading} error={ordersError} onRefresh={() => loadOrders(activeView.replace("orders-", ""))} />}
-        {activeSection === "communication" && <CommunicationWorkspace view={activeView} conversations={supportConversations} selectedConversation={activeSupportConversation} onSelectConversation={openSupportConversation} onReply={sendSupportReply} onUpdateConversation={updateSupportConversation} staff={staff} farmMembers={farmMembers} globalFarms={globalFarms} isGlobalAdmin={isGlobalAdmin} farmId={farmId} currentUserId={profile?.id} history={broadcastHistory} notification={notification} setNotification={setNotification} onSubmit={sendNotification} onUseTemplate={useNotificationTemplate} selected={selected} interactions={interactions} canNotify={canNotify} canReply={canReply} canRead={canReadCommunication} />}
+        {activeSection === "communication" && <CommunicationWorkspace view={activeView} conversations={supportConversations} selectedConversation={activeSupportConversation} onSelectConversation={openSupportConversation} onReply={sendSupportReply} onUpdateConversation={updateSupportConversation} farmMembers={farmMembers} globalFarms={globalFarms} isGlobalAdmin={isGlobalAdmin} farmId={farmId} currentUserId={profile?.id} history={broadcastHistory} notification={notification} setNotification={setNotification} onSubmit={sendNotification} onUseTemplate={useNotificationTemplate} selected={selected} interactions={interactions} canNotify={canNotify} canReply={canReply} canRead={canReadCommunication} onlineAgents={supportOnlineAgents} />}
         {activeSection === "staff" && <StaffWorkspace view={activeView} members={staff} dashboard={dashboard} categories={staffCategories} policies={policies} policiesLoading={policiesLoading} policyForm={policyForm} setPolicyForm={setPolicyForm} onCreatePolicy={createPolicy} onArchivePolicy={archivePolicy} onEditPolicy={editPolicy} onCancelPolicyEdit={cancelPolicyEdit} editingPolicy={Boolean(editingPolicyId)} logs={staffLogs} onUpdate={updateStaff} onDelete={deleteStaff} isAdmin={isAdmin} memberForm={memberForm} setMemberForm={setMemberForm} onAdd={addStaff} onAddCategory={addStaffCategory} onDeleteCategory={deleteStaffCategory} />}
         {activeSection === "settings" && <SettingsWorkspace view={activeView} user={profile} profileForm={profileForm} setProfileForm={setProfileForm} onSaveProfile={saveProfileSettings} onAvatarChange={updateProfileAvatar} profileAvatar={profileAvatar} onLogout={logout} passwordForm={passwordForm} setPasswordForm={setPasswordForm} onChangePassword={changePassword} farm={settingsFarm} farmName={farmName} setFarmName={setFarmName} onSaveFarm={saveFarmSettings} canEditFarm={Boolean(settingsFarm)} members={farmMembers} canManageMembers={isAdmin || profile?.role === "farmOwner"} memberPermissions={memberPermissions} setMemberPermissions={setMemberPermissions} onSaveMember={saveMemberPermissions} notifications={farmNotifications} onRefreshNotifications={loadFarmNotifications} onReadNotification={markFarmNotificationRead} />}
         {activeSection === "finance" && activeView === "finance-ledger" && (

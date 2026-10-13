@@ -25,6 +25,31 @@
   margin: 4px 0;
 }
 
+.communication-online-roster {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  margin-bottom: 14px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.communication-online-roster strong {
+  color: var(--green);
+}
+
+.support-presence-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .communication-workspace-panel select,
 .communication-workspace-panel input,
 .communication-workspace-panel textarea {

@@ -159,6 +159,7 @@ function App() {
     title: "",
     recipient_id: "",
     farm_id: "",
+    audience_scope: "farm",
   });
   const [importText, setImportText] = useState("");
   const [activeSection, setActiveSection] = useState("home");
@@ -1365,11 +1366,22 @@ function App() {
       ? globalFarms.find((farm) => String(farm.id) === String(targetFarmId))?.members || []
       : farmMembers;
     if (!targetFarmId) return showNotice("Select a farm before sending.", "error");
-    const broadcastRecipients = targetMembers.filter((member) =>
-      member.id !== profile?.id && (member.role === "farmOwner" || (["farmManager", "farmWorker"].includes(member.role) && !member.crm_role)),
+    const allRegisteredRecipients = [...new Map(globalFarms.flatMap((farm) =>
+      (farm.members || [])
+        .filter((member) => member.role === "farmOwner" || (["farmManager", "farmWorker"].includes(member.role) && !member.crm_role))
+        .map((member) => [String(member.id), member]),
+    ))].map(([, member]) => member);
+    const broadcastRecipients = (notification.audience_scope === "all_registered" && isGlobalAdmin
+      ? allRegisteredRecipients
+      : targetMembers).filter((member) =>
+      String(member.id) !== String(profile?.id) && (member.role === "farmOwner" || (["farmManager", "farmWorker"].includes(member.role) && !member.crm_role)),
     );
     const recipient = targetMembers.find((member) => String(member.id) === String(notification.recipient_id));
-    const audienceText = recipient ? `${recipient.name} only` : `${broadcastRecipients.length} farm members`;
+    const audienceText = recipient
+      ? `${recipient.name} only`
+      : notification.audience_scope === "all_registered" && isGlobalAdmin
+        ? `${broadcastRecipients.length} registered app users across all farms`
+        : `${broadcastRecipients.length} farm members`;
     if (!window.confirm(`Send this notification to ${audienceText}?`)) return;
     try {
       await api.post("/crm/notifications", {
@@ -1380,8 +1392,11 @@ function App() {
         ...(notification.recipient_id
           ? { recipient_id: Number(notification.recipient_id) }
           : {}),
+        ...(notification.audience_scope === "all_registered" && isGlobalAdmin
+          ? { audience_scope: "all_registered" }
+          : {}),
       });
-      setNotification((current) => ({ message: "", title: "", recipient_id: "", farm_id: current.farm_id }));
+      setNotification((current) => ({ message: "", title: "", recipient_id: "", farm_id: current.farm_id, audience_scope: "farm" }));
       await loadCrmMessages();
       showNotice("Notification sent.", "success");
     } catch (error) {
@@ -1398,6 +1413,7 @@ function App() {
       message: template.message,
       recipient_id: "",
       farm_id: current.farm_id || String(globalFarms[0]?.id || farmId || ""),
+      audience_scope: "farm",
     }));
     setActiveSection("communication");
     setActiveView("communication-broadcast");

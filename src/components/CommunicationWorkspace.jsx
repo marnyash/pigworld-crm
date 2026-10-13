@@ -70,23 +70,50 @@ function BroadcastView({ farmMembers, globalFarms, isGlobalAdmin, farmId, curren
   const recipients = useMemo(() => members.filter((member) =>
     member.role === "farmOwner" || (["farmManager", "farmWorker"].includes(member.role) && !member.crm_role),
   ), [members]);
-  const broadcastRecipientCount = recipients.filter((member) => String(member.id) !== String(currentUserId)).length;
+  const allRegisteredRecipients = useMemo(() => {
+    const uniqueUsers = new Map();
+    for (const farm of globalFarms) {
+      for (const member of farm.members || []) {
+        if (member.role !== "farmOwner" && !(["farmManager", "farmWorker"].includes(member.role) && !member.crm_role)) continue;
+        if (!uniqueUsers.has(String(member.id))) uniqueUsers.set(String(member.id), { ...member, farm_id: String(farm.id) });
+      }
+    }
+    return [...uniqueUsers.values()];
+  }, [globalFarms]);
+  const isGlobalBroadcast = isGlobalAdmin && notification.audience_scope === "all_registered";
+  const broadcastRecipientCount = (isGlobalBroadcast ? allRegisteredRecipients : recipients)
+    .filter((member) => String(member.id) !== String(currentUserId)).length;
   const recipientCount = notification.recipient_id ? 1 : broadcastRecipientCount;
   if (!canNotify) return <section className="panel-card communication-workspace-panel"><div className="eyebrow">Broadcast</div><h2>Read-only communication access</h2><p className="communication-muted">Your role can read communication messages but cannot send broadcasts.</p></section>;
   return <section className="panel-card communication-workspace-panel">
     <div className="panel-heading"><div><div className="eyebrow">Announcements</div><h2>Send a broadcast</h2></div><span>Not a support reply</span></div>
     <form className="communication-composer" onSubmit={onSubmit}>
       {isGlobalAdmin && <label>Farm<select required value={notification.farm_id || ""} onChange={(event) => setNotification((current) => ({ ...current, farm_id: event.target.value, recipient_id: "" }))}><option value="">Select a farm</option>{globalFarms.map((farm) => <option key={farm.id} value={farm.id}>{farm.name}</option>)}</select></label>}
-      <label>Audience <select value={notification.recipient_id} onChange={(event) => setNotification((current) => ({ ...current, recipient_id: event.target.value }))}>
-        <option value="">Everyone in this farm ({broadcastRecipientCount})</option>{recipients.map((member) => <option key={member.id} value={member.id}>{member.name} · {member.role}</option>)}
+      <label>Audience <select value={isGlobalBroadcast ? "__all_registered__" : notification.recipient_id} onChange={(event) => {
+        const value = event.target.value;
+        if (value === "__all_registered__") {
+          setNotification((current) => ({ ...current, recipient_id: "", audience_scope: "all_registered" }));
+          return;
+        }
+        const selectedMember = allRegisteredRecipients.find((member) => String(member.id) === value);
+        setNotification((current) => ({
+          ...current,
+          recipient_id: value === "" ? "" : value,
+          audience_scope: "farm",
+          ...(selectedMember ? { farm_id: selectedMember.farm_id } : {}),
+        }));
+      }}>
+        <option value="">Everyone in {isGlobalAdmin ? "selected farm" : "this farm"} ({recipients.filter((member) => String(member.id) !== String(currentUserId)).length})</option>
+        {isGlobalAdmin && <option value="__all_registered__">Everyone registered · all farms ({allRegisteredRecipients.filter((member) => String(member.id) !== String(currentUserId)).length})</option>}
+        {(isGlobalAdmin ? allRegisteredRecipients : recipients).filter((member) => String(member.id) !== String(currentUserId)).map((member) => <option key={member.id} value={member.id}>{member.name} · {member.email} · {member.role}{isGlobalAdmin ? ` · ${globalFarms.find((farm) => String(farm.id) === String(member.farm_id))?.name || "Farm"}` : ""}</option>)}
       </select></label>
       <input maxLength="160" value={notification.title || ""} onChange={(event) => setNotification((current) => ({ ...current, title: event.target.value }))} placeholder="Announcement title (optional)" />
       <textarea required rows="5" maxLength="1000" value={notification.message} onChange={(event) => setNotification((current) => ({ ...current, message: event.target.value }))} placeholder="Write an announcement" />
-      <p className="communication-muted">This will create an in-app notification for {recipientCount} {recipientCount === 1 ? "recipient" : "recipients"}.</p>
+      <p className="communication-muted">This will create an in-app notification for {recipientCount} {recipientCount === 1 ? "recipient" : "recipients"}{isGlobalBroadcast ? " across all farms" : ""}.</p>
       <button className="primary-button" type="submit">Send broadcast</button>
     </form>
     <div className="panel-heading"><div><div className="eyebrow">Audit history</div><h3>Recent broadcasts</h3></div><span>{history.length} recent</span></div>
-    {history.length === 0 ? <div className="state-message">No broadcasts have been sent.</div> : <div className="communication-message-list">{history.map((item) => <article className="communication-message-row" key={item.id}><div><strong>{item.title}</strong><small>By {item.sender_name} · {formatTime(item.created_at)}</small></div><p>{item.message}</p><span>{item.audience === "farm" ? `Farm-wide · ${item.recipient_count} recipients` : `To ${item.recipient_name || "one member"}`} · {item.push_sent_count || 0} push sent</span></article>)}</div>}
+    {history.length === 0 ? <div className="state-message">No broadcasts have been sent.</div> : <div className="communication-message-list">{history.map((item) => <article className="communication-message-row" key={item.id}><div><strong>{item.title}</strong><small>By {item.sender_name} · {formatTime(item.created_at)}</small></div><p>{item.message}</p><span>{item.audience === "all_registered" ? `All registered users · ${item.recipient_count} recipients` : item.audience === "farm" ? `Farm-wide · ${item.recipient_count} recipients` : `To ${item.recipient_name || "one member"}`} · {item.push_sent_count || 0} push sent</span></article>)}</div>}
   </section>;
 }
 

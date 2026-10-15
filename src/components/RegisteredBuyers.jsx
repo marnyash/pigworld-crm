@@ -72,7 +72,10 @@ export function RegisteredBuyers({ refreshKey = 0 }) {
           <h2>Registered buyers</h2>
         </div>
         <div className="directory-actions">
-          <span>{meta.total} accounts</span>
+          <span className="registered-buyers-total">
+            <strong>{meta.total}</strong>
+            <small>buyer accounts</small>
+          </span>
           <button
             className="filter-button"
             type="button"
@@ -88,13 +91,28 @@ export function RegisteredBuyers({ refreshKey = 0 }) {
         marketplace inquiry counts.
       </p>
       <label className="directory-search">
-        <span aria-hidden="true">⌕</span>
+        <span
+          className="registered-buyers-search-icon"
+          aria-hidden="true"
+        >
+          ⌕
+        </span>
         <input
           aria-label="Search registered buyers"
           value={search}
           onChange={(event) => changeSearch(event.target.value)}
           placeholder="Search name, email, or phone"
         />
+        {search && (
+          <button
+            className="registered-buyers-clear"
+            type="button"
+            aria-label="Clear buyer search"
+            onClick={() => changeSearch("")}
+          >
+            Clear
+          </button>
+        )}
       </label>
 
       {error ? (
@@ -119,25 +137,45 @@ export function RegisteredBuyers({ refreshKey = 0 }) {
       ) : (
         <>
           <div className="data-table-wrap">
-            <table className="data-table registered-buyers-table">
+            <table
+              className="data-table registered-buyers-table"
+              aria-label="Registered buyer accounts"
+            >
               <thead>
                 <tr>
-                  <th>Buyer</th>
-                  <th>Email</th>
-                  <th>Phone</th>
-                  <th>Registered</th>
-                  <th>Inquiries</th>
-                  <th>Status</th>
+                  <th scope="col">Buyer</th>
+                  <th scope="col">Email</th>
+                  <th scope="col">Phone</th>
+                  <th scope="col">Registered</th>
+                  <th scope="col">Inquiries</th>
+                  <th scope="col">Status</th>
                 </tr>
               </thead>
               <tbody>
                 {buyers.map((buyer) => (
                   <tr key={buyer.id}>
-                    <td><strong>{buyer.name || "Unnamed buyer"}</strong></td>
+                    <td>
+                      <div className="registered-buyer-identity">
+                        <span
+                          className="registered-buyer-avatar"
+                          aria-hidden="true"
+                        >
+                          {(buyer.name || "B").trim().charAt(0).toUpperCase() || "B"}
+                        </span>
+                        <div>
+                          <strong>{buyer.name || "Unnamed buyer"}</strong>
+                          <small>Registered account</small>
+                        </div>
+                      </div>
+                    </td>
                     <td>{buyer.email || "—"}</td>
                     <td>{buyer.phone || "—"}</td>
                     <td>{registrationDate(buyer.registered_at)}</td>
-                    <td>{buyer.inquiries_count ?? 0}</td>
+                    <td>
+                      <span className="registered-buyer-inquiries">
+                        {buyer.inquiries_count ?? 0}
+                      </span>
+                    </td>
                     <td>
                       <span
                         className={`status-label ${buyer.status === "active" ? "won" : "lost"}`}

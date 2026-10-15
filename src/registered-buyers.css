@@ -33,3 +33,171 @@
     flex-direction: column;
   }
 }
+
+.registered-buyers-panel {
+  overflow: hidden;
+  border-color: #e0e9de;
+  box-shadow: 0 12px 30px rgba(36, 53, 45, 0.06);
+}
+
+.registered-buyers-panel .panel-heading {
+  align-items: center;
+  gap: 18px;
+}
+
+.registered-buyers-panel .panel-heading h2 {
+  margin: 4px 0 0;
+  color: var(--ink);
+  font-size: clamp(21px, 2vw, 27px);
+  letter-spacing: -0.035em;
+}
+
+.registered-buyers-panel .directory-actions {
+  flex-direction: row;
+}
+
+.registered-buyers-total {
+  display: grid;
+  gap: 1px;
+  padding: 7px 12px;
+  border: 1px solid #dce8d9;
+  border-radius: 10px;
+  color: var(--green);
+  background: #f2f7ee;
+  text-align: center;
+}
+
+.registered-buyers-total strong {
+  font-size: 16px;
+  line-height: 1.1;
+}
+
+.registered-buyers-total small {
+  color: var(--muted);
+  font-size: 9px;
+  white-space: nowrap;
+}
+
+.registered-buyers-panel .directory-search {
+  min-height: 46px;
+  border-radius: 12px;
+  background: #f8faf7;
+}
+
+.registered-buyers-search-icon {
+  display: grid;
+  width: 26px;
+  height: 26px;
+  place-items: center;
+  border-radius: 8px;
+  color: var(--green);
+  background: #e9f1e5;
+}
+
+.registered-buyers-clear {
+  flex: 0 0 auto;
+  padding: 5px 8px;
+  border: 0;
+  border-radius: 6px;
+  color: var(--green);
+  background: #eaf2e6;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.registered-buyers-clear:hover {
+  background: #dcebd4;
+}
+
+.registered-buyers-table {
+  min-width: 800px;
+}
+
+.registered-buyers-table th {
+  padding: 13px 12px;
+  background: #f3f7f1;
+  color: #64746a;
+}
+
+.registered-buyers-table td {
+  padding: 14px 12px;
+  vertical-align: middle;
+}
+
+.registered-buyers-table tbody tr {
+  transition: background-color 150ms ease;
+}
+
+.registered-buyers-table tbody tr:hover {
+  background: #f8fbf6;
+}
+
+.registered-buyer-identity {
+  display: flex;
+  min-width: 150px;
+  align-items: center;
+  gap: 10px;
+}
+
+.registered-buyer-avatar {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  flex: 0 0 36px;
+  place-items: center;
+  border: 1px solid #d7e7d2;
+  border-radius: 12px;
+  color: #245d3e;
+  background: linear-gradient(145deg, #edf6e6, #dcebd7);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.registered-buyer-identity > div {
+  display: grid;
+  gap: 3px;
+}
+
+.registered-buyer-identity strong {
+  color: var(--ink);
+  font-size: 12px;
+}
+
+.registered-buyer-identity small {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.registered-buyer-inquiries {
+  display: inline-grid;
+  min-width: 30px;
+  min-height: 26px;
+  place-items: center;
+  padding: 0 8px;
+  border: 1px solid #e1e9df;
+  border-radius: 8px;
+  color: #315d44;
+  background: #f3f7f1;
+  font-weight: 700;
+}
+
+.registered-buyers-pagination {
+  padding-top: 14px;
+  border-top: 1px solid #e9eee8;
+}
+
+@media (max-width: 600px) {
+  .registered-buyers-panel .panel-heading {
+    align-items: flex-start;
+  }
+
+  .registered-buyers-panel .directory-actions {
+    align-items: center;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .registered-buyers-table tbody tr {
+    transition: none;
+  }
+}
